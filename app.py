@@ -103,18 +103,19 @@ else:
                 st.info("Sin datos de peso.")
 
         with t3:
-            st.subheader("Sistema de Hipertrofia 8 Semanas") [cite: 1]
+            st.subheader("Sistema de Hipertrofia 8 Semanas")
             sem = st.slider("Fase del Ciclo:", 1, 8, value=sem_auto, key="sem_slider")
             
+            # Lógica basada en tu manual de hipertrofia de 8 semanas
             reglas = {
-                1: {"f": "Calibración", "t": "3-1", "r": "RIR 2", "d": "Encontrar peso base. NO fallar."}, [cite: 1]
-                2: {"f": "Sobrecarga", "t": "3-1", "r": "RIR 1-2", "d": "Subir peso o +1 repetición."}, [cite: 1]
-                3: {"f": "Fuerza Pura", "t": "Normal", "r": "RIR 1", "d": "Peso máximo para 10-12 reps."}, [cite: 1]
-                4: {"f": "Tortura Mecánica", "t": "4-2", "r": "Fallo", "d": "MISMO PESO Sem 3. Pausa 2s abajo."}, [cite: 1]
-                5: {"f": "Reinicio", "t": "3-1", "r": "RIR 2", "d": "Usa pesos de la Semana 2."}, [cite: 1]
-                6: {"f": "Nuevo Pico", "t": "Normal", "r": "RIR 0", "d": "Superar récord de Semana 3."}, [cite: 1]
-                7: {"f": "Prueba Final", "t": "4-2", "r": "Fallo", "d": "Pesos récord con bajada de 4s."}, [cite: 1]
-                8: {"f": "Descarga", "t": "Normal", "r": "Fácil", "d": "PESOS AL 50%. -1 serie."} [cite: 1]
+                1: {"f": "Calibración", "t": "3-1", "r": "RIR 2", "d": "Encontrar peso base. NO fallar."},
+                2: {"f": "Sobrecarga", "t": "3-1", "r": "RIR 1-2", "d": "Subir peso o +1 repetición."},
+                3: {"f": "Fuerza Pura", "t": "Normal", "r": "RIR 1", "d": "Peso máximo para 10-12 reps."},
+                4: {"f": "Tortura Mecánica", "t": "4-2", "r": "Fallo", "d": "MISMO PESO Sem 3. Pausa 2s abajo."},
+                5: {"f": "Reinicio", "t": "3-1", "r": "RIR 2", "d": "Usa pesos de la Semana 2."},
+                6: {"f": "Nuevo Pico", "t": "Normal", "r": "RIR 0", "d": "Superar récord de Semana 3."},
+                7: {"f": "Prueba Final", "t": "4-2", "r": "Fallo", "d": "Pesos récord con bajada de 4s."},
+                8: {"f": "Descarga", "t": "Normal", "r": "Fácil", "d": "PESOS AL 50%. -1 serie."}
             }
             st.info(f"🎯 **{reglas[sem]['f']}** | ⏱️ {reglas[sem]['t']} | 🔋 {reglas[sem]['r']}\n\n📖 {reglas[sem]['d']}")
             
@@ -128,7 +129,6 @@ else:
                 else:
                     with st.spinner("Analizando..."):
                         try:
-                            # CORRECCIÓN DE NOMBRE DE MODELO
                             model = genai.GenerativeModel('gemini-1.5-flash')
                             prompt = f"Instrucción: Escribe en español paraguayo/latino. Eres el coach de Pablo. Está en Semana {sem} ({reglas[sem]['f']}). Regla: {reglas[sem]['d']}. Tempo: {reglas[sem]['t']}. Ejercicio: {ej_ai}. Récord: {p_max}kg. Último peso: {p_ult}kg. Meta: Definición extrema reteniendo músculo. Dale un consejo táctico corto."
                             res = model.generate_content(prompt)
@@ -136,14 +136,15 @@ else:
                         except Exception as e: st.error(f"Error: {e}")
 
         with t4:
-            st.subheader("💧 Protocolo de Hidratación") [cite: 2]
-            st.checkbox("04:30 AM - Sal + Café", key="h1") [cite: 2]
-            st.checkbox("05:00 AM - 500ml Gym", key="h2") [cite: 2]
-            st.checkbox("08:00 AM - 12PM - 500ml Oficina", key="h3") [cite: 2]
-            st.checkbox("12:00 PM - Almuerzo (250ml) + Caminata", key="h4") [cite: 2]
-            st.checkbox("13:30 PM - Tereré (Máximo 1 Litro)", key="h5") [cite: 2]
-            st.checkbox("17:00 PM - Cardio Intenso (500ml)", key="h6") [cite: 2]
-            st.checkbox("19:00 PM - Universidad (500ml)", key="h7") [cite: 2]
-            st.checkbox("22:00 PM - Shutdown", key="h8") [cite: 2]
+            # Lógica basada en tu protocolo de hidratación
+            st.subheader("💧 Protocolo de Hidratación")
+            st.checkbox("04:30 AM - Sal + Café", key="h1")
+            st.checkbox("05:00 AM - 500ml Gym", key="h2")
+            st.checkbox("08:00 AM - 12PM - 500ml Oficina", key="h3")
+            st.checkbox("12:00 PM - Almuerzo (250ml) + Caminata", key="h4")
+            st.checkbox("13:30 PM - Tereré (Máximo 1 Litro)", key="h5")
+            st.checkbox("17:00 PM - Cardio Intenso (500ml)", key="h6")
+            st.checkbox("19:00 PM - Universidad (500ml)", key="h7")
+            st.checkbox("22:00 PM - Shutdown", key="h8")
     else:
         st.error("Error al conectar con Hevy.")
