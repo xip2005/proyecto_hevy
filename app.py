@@ -32,7 +32,6 @@ def obtener_datos_hevy(paginas_a_extraer=3):
     
     todos_los_workouts = []
     
-    # Bucle para traer la página 1, 2 y 3 (10 rutinas por página, máximo permitido por Hevy)
     for pagina in range(1, paginas_a_extraer + 1):
         params = {"page": pagina, "pageSize": 10} 
         response = requests.get(url, headers=headers, params=params)
@@ -98,11 +97,11 @@ def procesar_datos(datos_json):
             
     return df_rutinas, df_ejercicios
 
-# 3. Estado de la Sesión (Solución para que no desaparezcan los datos)
+# 3. Estado de la Sesión
 if 'datos_cargados' not in st.session_state:
     st.session_state.datos_cargados = False
 
-# 4. BARRA LATERAL (Panel de Control)
+# 4. BARRA LATERAL (Panel de Control e Hidratación)
 with st.sidebar:
     st.title("⚡ Hevy Analytics")
     st.write("---")
@@ -119,14 +118,25 @@ with st.sidebar:
                         st.session_state.df_rutinas = df_r
                         st.session_state.df_ejercicios = df_e
                         st.session_state.datos_cargados = True
-                        st.rerun() # Fuerza a la página a mostrar el Dashboard
+                        st.rerun() 
                     else:
                         st.warning("La API conectó, pero no hay rutinas guardadas.")
                 else:
-                    st.error("No se pudo obtener el JSON completo de Hevy.")
+                    st.error("No se pudo obtener el JSON de Hevy.")
     
-    st.write("---")
     st.caption("Estado: " + ("🟢 API Lista" if API_KEY else "🔴 Falta Key"))
+    
+    # --- CHECKLIST DE HIDRATACIÓN 2.0 (INYECCIÓN NUEVA) ---
+    st.write("---")
+    st.subheader("💧 Protocolo de Hidratación")
+    st.checkbox("04:30 AM - Escudo Sal + Café")
+    st.checkbox("05:00 AM - Botella 500ml Gym")
+    st.checkbox("08:00 AM a 12PM - 500ml Oficina")
+    st.checkbox("12:00 PM - Almuerzo (250ml) + Caminata")
+    st.checkbox("13:30 PM - Tereré (Límite 1L)")
+    st.checkbox("17:00 PM - Cardio Intenso (500ml)")
+    st.checkbox("19:00 PM - Universidad (500ml)")
+    st.checkbox("22:00 PM - Shutdown (Cero líquidos)")
 
 # 5. PANTALLA PRINCIPAL
 if st.session_state.datos_cargados:
@@ -135,7 +145,6 @@ if st.session_state.datos_cargados:
 
     st.title("Panel de Rendimiento Deportivo")
     
-    # Tarjetas de Métricas (KPIs Profesionales)
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Sesiones Analizadas", f"{len(df_rutinas)} rutinas")
@@ -147,8 +156,13 @@ if st.session_state.datos_cargados:
 
     st.write("---")
 
-    # Pestañas Analíticas
-    tab1, tab2, tab3 = st.tabs(["📊 Historial de Volumen", "📈 Progresión de Fuerza (1RM)", "🧠 Motor de Alertas"])
+    # --- NUEVA ESTRUCTURA DE PESTAÑAS (4 PESTAÑAS) ---
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Historial de Volumen", 
+        "📈 Progresión de Fuerza", 
+        "🧠 Motor de Alertas", 
+        "⚙️ Sistema de Hipertrofia"
+    ])
     
     with tab1:
         st.subheader("Evolución del Tonelaje")
@@ -163,29 +177,72 @@ if st.session_state.datos_cargados:
         df_filtro = df_ejercicios[df_ejercicios["Ejercicio"] == ejercicio_elegido]
         df_max_rm = df_filtro.groupby("Fecha Solo")["1RM Est."].max().reset_index()
         
+        # --- SOLUCIÓN DE LA GRÁFICA PLANA ---
+        # Forzamos la columna a tipo Fecha para que la librería gráfica dibuje la línea
+        df_max_rm["Fecha Solo"] = pd.to_datetime(df_max_rm["Fecha Solo"])
+        
         st.write(f"Tendencia de fuerza en **{ejercicio_elegido}**")
         st.line_chart(df_max_rm.set_index("Fecha Solo"), y="1RM Est.", use_container_width=True)
-        st.write("🔎 Datos crudos en memoria:")
-        st.dataframe(df_max_rm, use_container_width=True)
+        
+        with st.expander("Ver Datos Crudos del 1RM"):
+            st.dataframe(df_max_rm, use_container_width=True)
 
     with tab3:
         st.subheader("Análisis Crítico de Rendimiento")
-        st.write("Mantener el volumen y la intensidad es vital en esta fase de definición para asegurar llegar a mayo perdiendo grasa y no músculo.")
-        
+        st.write("Mantener el volumen y la intensidad es vital en esta fase de definición.")
         rutinas_recientes = df_rutinas.head(15) 
         
         for tipo_rutina in ["Push", "Pull", "Torso", "Leg"]:
             datos_tipo = rutinas_recientes[rutinas_recientes["Rutina"].str.contains(tipo_rutina, case=False, na=False)]
-            
             if len(datos_tipo) >= 2:
                 vol_actual = datos_tipo.iloc[0]["Volumen Total (Kg)"]
                 vol_anterior = datos_tipo.iloc[1]["Volumen Total (Kg)"]
-                
                 if vol_actual < vol_anterior:
-                    st.error(f"🚨 **ALERTA EN {tipo_rutina.upper()}:** El volumen cayó de {vol_anterior}kg a {vol_actual}kg. Debes forzar la intensidad o agregar repeticiones la próxima sesión para evitar pérdida muscular.")
+                    st.error(f"🚨 **ALERTA EN {tipo_rutina.upper()}:** El volumen cayó de {vol_anterior}kg a {vol_actual}kg. Forzar intensidad.")
                 else:
-                    st.success(f"✅ **ÓPTIMO EN {tipo_rutina.upper()}:** Volumen mantenido o en aumento ({vol_actual}kg). El estímulo muscular está asegurado.")
+                    st.success(f"✅ **ÓPTIMO EN {tipo_rutina.upper()}:** Volumen mantenido o en aumento ({vol_actual}kg).")
+
+    # --- PESTAÑA 4: EL CEREBRO DE LAS 8 SEMANAS ---
+    with tab4:
+        st.subheader("⚙️ Sistema de Hipertrofia (Controlador de Ciclos)")
+        
+        # Selector de la semana actual
+        semana = st.slider("¿En qué semana de tu ciclo te encuentras hoy?", 1, 8, 1)
+        
+        # Diccionario lógico extraído de tu manual
+        reglas_ciclo = {
+            1: {"fase": "Calibración", "tempo": "3-1", "rir": "2", "desc": "Encontrar peso base. NO llegues al fallo."},
+            2: {"fase": "Sobrecarga Inicial", "tempo": "3-1", "rir": "1-2", "desc": "Opción A: Sube 2.5kg. Opción B: Mismo peso, 2 reps extra."},
+            3: {"fase": "Fuerza Pura", "tempo": "Normal", "rir": "1", "desc": "Ritmo fluido. Aumenta peso obligatorio para 10-12 reps."},
+            4: {"fase": "Tortura Mecánica", "tempo": "4-2", "rir": "Fallo", "desc": "Usa EL MISMO PESO de la Semana 3. Pausa de 2 seg abajo."},
+            5: {"fase": "Reinicio Interno", "tempo": "3-1", "rir": "2", "desc": "Usa los pesos que manejaste en la Semana 2. Técnica impecable."},
+            6: {"fase": "Nuevo Pico de Fuerza", "tempo": "Normal", "rir": "0", "desc": "Rompe tu récord. Supera el peso de la Semana 3."},
+            7: {"fase": "La Prueba Final", "tempo": "4-2", "rir": "Fallo", "desc": "Usa los pesos récord de la Sem 6 con bajada de 4 segundos."},
+            8: {"fase": "Descarga (Eco)", "tempo": "Normal", "rir": "Fácil", "desc": "Baja TODOS los pesos a la mitad (50%) y haz una serie menos."}
+        }
+        
+        # Renderizamos el manual dinámicamente
+        st.info(f"🎯 **Objetivo:** {reglas_ciclo[semana]['fase']}\n\n⏱️ **Tempo:** {reglas_ciclo[semana]['tempo']} | 🔋 **RIR:** {reglas_ciclo[semana]['rir']}\n\n📖 **Regla del día:** {reglas_ciclo[semana]['desc']}")
+        
+        st.write("---")
+        st.subheader("🧮 Calculadora de Peso por Ejercicio")
+        ej_hipertrofia = st.selectbox("Elige el ejercicio a realizar:", df_ejercicios["Ejercicio"].unique(), key="select_hiper")
+        
+        # Lógica matemática de peso basándose en historial
+        df_hist_ej = df_ejercicios[df_ejercicios["Ejercicio"] == ej_hipertrofia]
+        
+        if not df_hist_ej.empty:
+            peso_maximo = df_hist_ej["Peso (Kg)"].max()
+            peso_reciente = df_hist_ej.iloc[0]["Peso (Kg)"]
+            
+            if semana == 8:
+                peso_descarga = peso_maximo * 0.5
+                st.success(f"⚖️ **Tu peso para hoy:** {peso_descarga:.1f} kg *(El 50% de tu máximo histórico de {peso_maximo} kg. Haz 1 serie menos).*")
+            elif semana == 4 or semana == 7:
+                st.warning(f"⚖️ **Tu peso para hoy:** Mantén tu peso pesado ({peso_reciente} kg) pero aplícale el Tempo {reglas_ciclo[semana]['tempo']}. Te van a salir menos reps, es lo esperado.")
+            else:
+                st.info(f"📊 Tu peso máximo histórico es **{peso_maximo} kg**. Aplica la regla de arriba para decidir los discos de hoy.")
+        
 else:
-    # Pantalla de bienvenida antes de cargar datos
     st.title("Bienvenido al Motor Analítico")
     st.info("👈 Por favor, utiliza el panel lateral para sincronizar tus datos con los servidores de Hevy.")
