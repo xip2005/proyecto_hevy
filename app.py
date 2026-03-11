@@ -20,7 +20,7 @@ modo_oscuro = st.sidebar.toggle("🌙 Activar Modo Oscuro", value=st.session_sta
 st.session_state.modo_oscuro = modo_oscuro
 
 # Definición de colores según el tema
-if no modo_oscuro:
+if not modo_oscuro:
     bg_app = "#f4f7f6"        # Fondo gris clarito muy moderno
     bg_card = "#ffffff"       # Tarjetas blancas
     color_texto = "#1e1e1e"   # Letras oscuras
