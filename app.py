@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 import os
 import re
-import google.generativeai as genai
+from groq import Groq
 from dotenv import load_dotenv
 
 # 1. CONFIGURACIÓN DEL SISTEMA
@@ -12,12 +12,14 @@ st.set_page_config(page_title="Hevy Coach AI", page_icon="⚡", layout="centered
 load_dotenv()
 API_KEY = os.getenv("HEVY_API_KEY")
 ZONA_HORARIA = os.getenv("TIMEZONE", "America/Asuncion") 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+# Inicializar Cliente Groq
+client = None
+if GROQ_API_KEY:
+    client = Groq(api_key=GROQ_API_KEY)
 
-# 2. MOTOR DE DATOS
+# 2. MOTOR DE DATOS (Sincronización Automática)
 @st.cache_data(ttl=300) 
 def obtener_datos_hevy_auto():
     url = "https://api.hevyapp.com/v1/workouts"
@@ -65,9 +67,9 @@ def procesar_datos(datos_json):
 
 # 3. INTERFAZ PROFESIONAL
 if not API_KEY:
-    st.error("⚠️ Falta HEVY_API_KEY.")
+    st.error("⚠️ Falta HEVY_API_KEY en Secrets.")
 else:
-    with st.spinner("Sincronizando..."):
+    with st.spinner("Sincronizando con Hevy..."):
         crudo = obtener_datos_hevy_auto()
     
     if crudo:
@@ -75,7 +77,7 @@ else:
         sem_auto = detectar_semana_actual(crudo)
         st.title("⚡ Hevy Coach AI")
         
-        t1, t2, t3, t4 = st.tabs(["📊 Rendimiento", "📈 Fuerza", "🧠 Coach AI", "💧 Agua"])
+        t1, t2, t3, t4 = st.tabs(["📊 Rendimiento", "📈 Fuerza", "🧠 Coach Groq", "💧 Agua"])
         
         with t1:
             st.subheader("Tonelaje y Alertas")
@@ -88,9 +90,9 @@ else:
                 if len(filtro) >= 2:
                     v_act, v_ant = filtro.iloc[0]["Volumen"], filtro.iloc[1]["Volumen"]
                     if v_act < v_ant:
-                        st.error(f"🚨 **{tipo.upper()}**: Bajaste {v_ant - v_act:.0f}kg.")
+                        st.error(f"🚨 **{tipo.upper()}**: Bajaste {v_ant - v_act:.0f}kg. ¡Mantené la intensidad!")
                     else:
-                        st.success(f"✅ **{tipo.upper()}**: Estímulo mantenido ({v_act:.0f}kg).")
+                        st.success(f"✅ **{tipo.upper()}**: Volumen sólido ({v_act:.0f}kg).")
 
         with t2:
             st.subheader("Progreso 1RM (Epley)")
@@ -100,7 +102,7 @@ else:
                 df_f_g = df_f.groupby("Fecha Cruda")["1RM"].max()
                 st.line_chart(df_f_g)
             else:
-                st.info("Sin datos de peso.")
+                st.info("No hay datos de peso para este ejercicio.")
 
         with t3:
             st.subheader("Sistema de Hipertrofia 8 Semanas")
@@ -116,7 +118,7 @@ else:
                 7: {"f": "Prueba Final", "t": "4-2", "r": "Fallo", "d": "Pesos récord con bajada de 4s."},
                 8: {"f": "Descarga", "t": "Normal", "r": "Fácil", "d": "PESOS AL 50%. -1 serie."}
             }
-            st.info(f"🎯 **{reglas[sem]['f']}** | ⏱️ {reglas[sem]['t']} | 🔋 {reglas[sem]['r']}\n\n📖 {reglas[sem]['d']}")
+            st.info(f"🎯 **{reglas[sem]['f']}** | ⏱️ {reglas[sem]['t']}\n\n📖 {reglas[sem]['d']}")
             
             ej_ai = st.selectbox("Ejercicio Coach:", df_e["Ejercicio"].unique(), key="ai_sel")
             df_ai = df_e[df_e["Ejercicio"] == ej_ai]
@@ -124,22 +126,31 @@ else:
             p_ult = df_ai.iloc[0]["Peso"] if not df_ai.empty else 0
             
             if st.button("🧠 Consultar Coach IA", use_container_width=True):
-                if not GEMINI_API_KEY: st.error("Falta API Key")
+                if not client: st.error("Falta GROQ_API_KEY en Secrets.")
                 else:
-                    with st.spinner("Analizando biomecánica..."):
+                    with st.spinner("Coach analizando tus datos en tiempo real..."):
                         try:
-                            # Forzamos el uso del modelo flash sin prefijos raros
-                            model = genai.GenerativeModel('gemini-1.5-flash')
-                            # Le pasamos el prompt con tus reglas de las 8 semanas
-                            prompt = f"Instrucción: Hablá en español paraguayo. Sos un coach experto. Cliente: Pablo. Semana: {sem}. Regla: {reglas[sem]['d']}. Ejercicio: {ej_ai}. Récord: {p_max}kg. Meta: Definición extrema. Danos un consejo táctico."
-                            res = model.generate_content(prompt)
-                            st.write(res.text)
-                        except Exception as e:
-                            st.error(f"Error de conexión: {e}")
+                            # Prompt optimizado para Pablo
+                            chat_completion = client.chat.completions.create(
+                                messages=[{
+                                    "role": "system",
+                                    "content": "Eres un Coach de Fitness experto, analítico y directo. Hablas en español latino/paraguayo."
+                                }, {
+                                    "role": "user",
+                                    "content": f"""Pablo (21 años, estudiante de sistemas) está en Semana {sem} ({reglas[sem]['f']}). 
+                                    Objetivo: Definición máxima reteniendo músculo.
+                                    Regla de hoy: {reglas[sem]['d']}. Tempo: {reglas[sem]['t']}. 
+                                    Ejercicio: {ej_ai}. Récord: {p_max}kg. Último peso: {p_ult}kg.
+                                    Dame un consejo táctico corto (2 párrafos) sobre cómo debe entrenar hoy."""
+                                }],
+                                model="llama-3.3-70b-versatile",
+                            )
+                            st.write(chat_completion.choices[0].message.content)
+                        except Exception as e: st.error(f"Error en Groq: {e}")
 
         with t4:
             st.subheader("💧 Protocolo de Hidratación")
-            st.checkbox("04:30 AM - Sal + Café", key="h1")
+            st.checkbox("04:30 AM - Escudo Sal + Café", key="h1")
             st.checkbox("05:00 AM - 500ml Gym", key="h2")
             st.checkbox("08:00 AM - 12PM - 500ml Oficina", key="h3")
             st.checkbox("12:00 PM - Almuerzo (250ml) + Caminata", key="h4")
@@ -149,4 +160,3 @@ else:
             st.checkbox("22:00 PM - Shutdown", key="h8")
     else:
         st.error("Error al conectar con Hevy.")
-
