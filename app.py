@@ -93,7 +93,7 @@ else:
                         st.success(f"✅ **{tipo.upper()}**: Estímulo mantenido ({v_act:.0f}kg).")
 
         with t2:
-            st.subheader("Progreso 1RM (Fórmula Epley)")
+            st.subheader("Progreso 1RM (Epley)")
             ej_sel = st.selectbox("Elegir Ejercicio:", df_e["Ejercicio"].unique(), key="fuerza_sel")
             df_f = df_e[(df_e["Ejercicio"] == ej_sel) & (df_e["Peso"] > 0)].sort_values("Fecha Cruda")
             if not df_f.empty:
@@ -106,7 +106,6 @@ else:
             st.subheader("Sistema de Hipertrofia 8 Semanas")
             sem = st.slider("Fase del Ciclo:", 1, 8, value=sem_auto, key="sem_slider")
             
-            # Lógica basada en tu manual de hipertrofia de 8 semanas
             reglas = {
                 1: {"f": "Calibración", "t": "3-1", "r": "RIR 2", "d": "Encontrar peso base. NO fallar."},
                 2: {"f": "Sobrecarga", "t": "3-1", "r": "RIR 1-2", "d": "Subir peso o +1 repetición."},
@@ -129,14 +128,14 @@ else:
                 else:
                     with st.spinner("Analizando..."):
                         try:
+                            # Cambio a nombre de modelo estándar para máxima compatibilidad
                             model = genai.GenerativeModel('gemini-1.5-flash')
-                            prompt = f"Instrucción: Escribe en español paraguayo/latino. Eres el coach de Pablo. Está en Semana {sem} ({reglas[sem]['f']}). Regla: {reglas[sem]['d']}. Tempo: {reglas[sem]['t']}. Ejercicio: {ej_ai}. Récord: {p_max}kg. Último peso: {p_ult}kg. Meta: Definición extrema reteniendo músculo. Dale un consejo táctico corto."
+                            prompt = f"Instrucción: Escribe en español paraguayo/latino. Eres el coach de Pablo Duarte. Pablo tiene 21 años y estudia Análisis de Sistemas. Está en Semana {sem} ({reglas[sem]['f']}). Regla: {reglas[sem]['d']}. Tempo: {reglas[sem]['t']}. Ejercicio: {ej_ai}. Récord: {p_max}kg. Último peso: {p_ult}kg. Meta: Definición extrema reteniendo músculo para mayo. Dale un consejo táctico corto."
                             res = model.generate_content(prompt)
                             st.write(res.text)
                         except Exception as e: st.error(f"Error: {e}")
 
         with t4:
-            # Lógica basada en tu protocolo de hidratación
             st.subheader("💧 Protocolo de Hidratación")
             st.checkbox("04:30 AM - Sal + Café", key="h1")
             st.checkbox("05:00 AM - 500ml Gym", key="h2")
