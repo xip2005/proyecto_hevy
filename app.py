@@ -124,16 +124,18 @@ else:
             p_ult = df_ai.iloc[0]["Peso"] if not df_ai.empty else 0
             
             if st.button("🧠 Consultar Coach IA", use_container_width=True):
-                if not GEMINI_API_KEY: st.error("Falta GEMINI_API_KEY")
+                if not GEMINI_API_KEY: st.error("Falta API Key")
                 else:
-                    with st.spinner("Analizando..."):
+                    with st.spinner("Analizando biomecánica..."):
                         try:
-                            # Cambio a nombre de modelo estándar para máxima compatibilidad
+                            # Forzamos el uso del modelo flash sin prefijos raros
                             model = genai.GenerativeModel('gemini-1.5-flash')
-                            prompt = f"Instrucción: Escribe en español paraguayo/latino. Eres el coach de Pablo Duarte. Pablo tiene 21 años y estudia Análisis de Sistemas. Está en Semana {sem} ({reglas[sem]['f']}). Regla: {reglas[sem]['d']}. Tempo: {reglas[sem]['t']}. Ejercicio: {ej_ai}. Récord: {p_max}kg. Último peso: {p_ult}kg. Meta: Definición extrema reteniendo músculo para mayo. Dale un consejo táctico corto."
+                            # Le pasamos el prompt con tus reglas de las 8 semanas
+                            prompt = f"Instrucción: Hablá en español paraguayo. Sos un coach experto. Cliente: Pablo. Semana: {sem}. Regla: {reglas[sem]['d']}. Ejercicio: {ej_ai}. Récord: {p_max}kg. Meta: Definición extrema. Danos un consejo táctico."
                             res = model.generate_content(prompt)
                             st.write(res.text)
-                        except Exception as e: st.error(f"Error: {e}")
+                        except Exception as e:
+                            st.error(f"Error de conexión: {e}")
 
         with t4:
             st.subheader("💧 Protocolo de Hidratación")
@@ -147,3 +149,4 @@ else:
             st.checkbox("22:00 PM - Shutdown", key="h8")
     else:
         st.error("Error al conectar con Hevy.")
+
