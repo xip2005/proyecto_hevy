@@ -21,19 +21,38 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-# --- CONEXIÓN A LA BASE DE DATOS (Google Sheets) ---
-@st.cache_resource
-def conectar_db():
+# --- DIAGNÓSTICO EXTREMO DE BASE DE DATOS ---
+def conectar_db_debug():
+    if "GOOGLE_JSON" not in st.secrets:
+        st.error("❌ ERROR 1: Streamlit no encuentra la variable 'GOOGLE_JSON' en los Secrets.")
+        return None
+    
     try:
-        scope = ['https://www.googleapis.com/auth/spreadsheets']
-        creds_dict = json.loads(st.secrets["GOOGLE_JSON"])
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        client_gs = gspread.authorize(creds)
-        return client_gs.open("Hevy_DB").sheet1
+        secreto_crudo = st.secrets["GOOGLE_JSON"]
+        creds_dict = json.loads(secreto_crudo)
     except Exception as e:
+        st.error(f"❌ ERROR 2 (Formato JSON): El texto en Secrets está mal copiado o le faltan las 3 comillas simples. Detalle: {e}")
         return None
 
-sheet = conectar_db()
+    try:
+        scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        client_gs = gspread.authorize(creds)
+    except Exception as e:
+        st.error(f"❌ ERROR 3 (Autenticación): Google rechazó las credenciales. Detalle: {e}")
+        return None
+
+    try:
+        hoja = client_gs.open("Hevy_DB").sheet1
+        return hoja
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error("❌ ERROR 4 (No encuentra el archivo): O la planilla NO se llama exactamente 'Hevy_DB', o te olvidaste de invitar al correo del robot como Editor.")
+        return None
+    except Exception as e:
+        st.error(f"❌ ERROR 5 (Desconocido): Falló al abrir la planilla. Detalle: {e}")
+        return None
+
+sheet = conectar_db_debug()
 
 # 2. MOTOR DE DATOS (Hevy)
 @st.cache_data(ttl=300) 
@@ -41,7 +60,6 @@ def obtener_datos_hevy_auto():
     url = "https://api.hevyapp.com/v1/workouts"
     headers = {"api-key": API_KEY, "Accept": "application/json"}
     todos = []
-    # Redujimos a 2 páginas para que la app cargue el doble de rápido
     for p in range(1, 3): 
         res = requests.get(url, headers=headers, params={"page": p, "pageSize": 10})
         if res.status_code == 200:
@@ -93,13 +111,12 @@ else:
         
         st.title("⚡ Hevy Coach AI")
 
-        # --- FILTRO EN CASCADA (Súper rápido para el Gym) ---
+        # --- FILTRO EN CASCADA ---
         col_1, col_2 = st.columns([1, 1])
         with col_1:
             rutinas_unicas = df_e["Rutina"].unique()
             rutina_sel = st.selectbox("1. Día de Entrenamiento:", rutinas_unicas)
         with col_2:
-            # Filtramos los ejercicios para mostrar SOLO los del día seleccionado
             ejercicios_del_dia = df_e[df_e["Rutina"] == rutina_sel]["Ejercicio"].unique()
             ejercicio_sel = st.selectbox("2. Ejercicio Actual:", ejercicios_del_dia)
 
@@ -149,20 +166,16 @@ else:
         with t2:
             st.subheader("💧 Base de Datos: Hidratación")
             if sheet:
-                # Lógica para leer/escribir en Google Sheets
                 tz = pytz.timezone(ZONA_HORARIA)
                 hoy_str = datetime.now(tz).strftime('%Y-%m-%d')
                 
                 try:
                     celda_hoy = sheet.find(hoy_str, in_column=1)
                 except gspread.exceptions.CellNotFound:
-                    # Si es un día nuevo, crea la fila en blanco
                     sheet.append_row([hoy_str, "FALSE", "FALSE", "FALSE", "FALSE", "FALSE", "FALSE", "FALSE", "FALSE"])
                     celda_hoy = sheet.find(hoy_str, in_column=1)
                 
-                # Leemos los valores actuales de la base de datos
                 valores_db = sheet.row_values(celda_hoy.row)
-                # Rellenamos con FALSE si la fila está incompleta
                 while len(valores_db) < 9: valores_db.append("FALSE")
                 
                 etiquetas = [
@@ -183,13 +196,12 @@ else:
                 
                 if hubo_cambios:
                     if st.button("💾 Guardar en Base de Datos", type="primary", use_container_width=True):
-                        # Actualiza la fila entera en Google Sheets
                         rango = f"A{celda_hoy.row}:I{celda_hoy.row}"
                         sheet.update(range_name=rango, values=[nuevos_valores])
                         st.success("¡Agua sincronizada en la nube!")
                         st.rerun()
             else:
-                st.error("No se pudo conectar a Google Sheets. Revisa tu archivo JSON en los Secrets.")
+                st.error("La pestaña de Agua está desactivada hasta que se resuelva el error rojo de arriba.")
 
         with t3:
             st.subheader("Volumen por Sesión")
