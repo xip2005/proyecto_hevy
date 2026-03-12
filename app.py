@@ -3,7 +3,12 @@ import requests
 import pandas as pd
 import os
 import re
+import json
+import gspread
+from google.oauth2.service_account import Credentials
 from groq import Groq
+from datetime import datetime
+import pytz
 from dotenv import load_dotenv
 
 # 1. CONFIGURACIÓN DEL SISTEMA
@@ -16,13 +21,28 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-# 2. MOTOR DE DATOS
+# --- CONEXIÓN A LA BASE DE DATOS (Google Sheets) ---
+@st.cache_resource
+def conectar_db():
+    try:
+        scope = ['https://www.googleapis.com/auth/spreadsheets']
+        creds_dict = json.loads(st.secrets["GOOGLE_JSON"])
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        client_gs = gspread.authorize(creds)
+        return client_gs.open("Hevy_DB").sheet1
+    except Exception as e:
+        return None
+
+sheet = conectar_db()
+
+# 2. MOTOR DE DATOS (Hevy)
 @st.cache_data(ttl=300) 
 def obtener_datos_hevy_auto():
     url = "https://api.hevyapp.com/v1/workouts"
     headers = {"api-key": API_KEY, "Accept": "application/json"}
     todos = []
-    for p in range(1, 4): 
+    # Redujimos a 2 páginas para que la app cargue el doble de rápido
+    for p in range(1, 3): 
         res = requests.get(url, headers=headers, params={"page": p, "pageSize": 10})
         if res.status_code == 200:
             datos = res.json()
@@ -41,6 +61,7 @@ def procesar_datos(datos_json):
     lista_r, lista_e = [], []
     for rutina in datos_json["workouts"]:
         f_c = rutina.get("start_time", "")
+        n_rutina = rutina.get("title", "Sin Nombre")
         vol_r = 0
         for ej in rutina.get("exercises", []):
             nombre_ej = ej.get("title")
@@ -49,10 +70,10 @@ def procesar_datos(datos_json):
                 vol_r += (p * r)
                 rm = p * (1 + (r / 30)) if r > 0 else 0
                 lista_e.append({
-                    "Fecha Cruda": f_c, "Ejercicio": nombre_ej, 
+                    "Fecha Cruda": f_c, "Rutina": n_rutina, "Ejercicio": nombre_ej, 
                     "Peso (Kg)": p, "Reps": r, "1RM Est.": round(rm, 1)
                 })
-        lista_r.append({"Fecha Cruda": f_c, "Rutina": rutina.get("title"), "Volumen": vol_r})
+        lista_r.append({"Fecha Cruda": f_c, "Rutina": n_rutina, "Volumen": vol_r})
     df_r, df_e = pd.DataFrame(lista_r), pd.DataFrame(lista_e)
     for df in [df_r, df_e]:
         if not df.empty:
@@ -61,7 +82,7 @@ def procesar_datos(datos_json):
             df["Fecha_Sort"] = f_dt
     return df_r, df_e
 
-# 3. INTERFAZ
+# 3. INTERFAZ Y LÓGICA
 if not API_KEY:
     st.error("⚠️ Configura HEVY_API_KEY.")
 else:
@@ -72,12 +93,17 @@ else:
         
         st.title("⚡ Hevy Coach AI")
 
-        # --- SELECTORES GLOBALES (Para que la IA sea dinámica) ---
+        # --- FILTRO EN CASCADA (Súper rápido para el Gym) ---
         col_1, col_2 = st.columns([1, 1])
         with col_1:
-            semana_sel = st.slider("Fase del Ciclo:", 1, 8, value=sem_auto, key="global_sem")
+            rutinas_unicas = df_e["Rutina"].unique()
+            rutina_sel = st.selectbox("1. Día de Entrenamiento:", rutinas_unicas)
         with col_2:
-            ejercicio_sel = st.selectbox("Ejercicio Actual:", df_e["Ejercicio"].unique(), key="global_ej")
+            # Filtramos los ejercicios para mostrar SOLO los del día seleccionado
+            ejercicios_del_dia = df_e[df_e["Rutina"] == rutina_sel]["Ejercicio"].unique()
+            ejercicio_sel = st.selectbox("2. Ejercicio Actual:", ejercicios_del_dia)
+
+        semana_sel = st.slider("Fase del Ciclo:", 1, 8, value=sem_auto)
 
         # --- REGLAS LÓGICAS ---
         reglas = {
@@ -93,11 +119,10 @@ else:
         fase, desc = reglas[semana_sel]
         p_max = df_e[df_e["Ejercicio"] == ejercicio_sel]["Peso (Kg)"].max()
 
-        # --- COACH IA AUTOMÁTICO (Siempre visible) ---
+        # --- COACH IA AUTOMÁTICO ---
         st.markdown(f"### 🧠 Coach: {ejercicio_sel}")
         if client:
-            # Función de cache para no gastar API de más en cada refresh visual
-            @st.cache_data(ttl=60) # Cache de 1 min para el consejo
+            @st.cache_data(ttl=60) 
             def analizar_con_ia(sem, fas, reg, ej, maximo):
                 try:
                     prompt = f"Coach, Pablo (estudiante sistemas, 21 años) está en Semana {sem} ({fas}). Regla: {reg}. Ejercicio: {ej}. Récord: {maximo}kg. Meta: Definición extrema. Consejo táctico corto en español paraguayo."
@@ -114,34 +139,59 @@ else:
         st.write("---")
 
         # --- TABS DE DATOS ---
-        t1, t2, t3 = st.tabs(["📊 Rendimiento", "📈 Tabla Fuerza", "💧 Agua"])
+        t1, t2, t3 = st.tabs(["📈 Tabla Fuerza", "💧 Agua DB", "📊 Rendimiento"])
         
         with t1:
-            st.subheader("Volumen por Sesión")
-            df_plot = df_r.sort_values("Fecha_Sort").tail(10)
-            st.line_chart(df_plot.set_index("Fecha")["Volumen"])
-            
-            # Alertas automáticas
-            rutinas_rec = df_r.head(8)
-            for tipo in ["Push", "Pull", "Torso", "Leg"]:
-                f = rutinas_rec[rutinas_rec["Rutina"].str.contains(tipo, case=False, na=False)]
-                if len(f) >= 2:
-                    v_act, v_ant = f.iloc[0]["Volumen"], f.iloc[1]["Volumen"]
-                    if v_act < v_ant: st.error(f"🚨 **{tipo.upper()}**: Volumen bajó.")
-                    else: st.success(f"✅ **{tipo.upper()}**: Estímulo sólido.")
-
-        with t2:
-            st.subheader("Historial estilo Excel")
+            st.subheader(f"Historial: {ejercicio_sel}")
             df_hist = df_e[df_e["Ejercicio"] == ejercicio_sel].sort_values("Fecha_Sort", ascending=False)
             st.dataframe(df_hist[["Fecha", "Peso (Kg)", "Reps", "1RM Est."]], use_container_width=True, hide_index=True)
 
+        with t2:
+            st.subheader("💧 Base de Datos: Hidratación")
+            if sheet:
+                # Lógica para leer/escribir en Google Sheets
+                tz = pytz.timezone(ZONA_HORARIA)
+                hoy_str = datetime.now(tz).strftime('%Y-%m-%d')
+                
+                try:
+                    celda_hoy = sheet.find(hoy_str, in_column=1)
+                except gspread.exceptions.CellNotFound:
+                    # Si es un día nuevo, crea la fila en blanco
+                    sheet.append_row([hoy_str, "FALSE", "FALSE", "FALSE", "FALSE", "FALSE", "FALSE", "FALSE", "FALSE"])
+                    celda_hoy = sheet.find(hoy_str, in_column=1)
+                
+                # Leemos los valores actuales de la base de datos
+                valores_db = sheet.row_values(celda_hoy.row)
+                # Rellenamos con FALSE si la fila está incompleta
+                while len(valores_db) < 9: valores_db.append("FALSE")
+                
+                etiquetas = [
+                    "04:30 AM - Sal + Café", "05:00 AM - 500ml Gym", 
+                    "08:00 AM - 12PM - 500ml Oficina", "12:00 PM - Almuerzo (250ml) + Caminata", 
+                    "13:30 PM - Tereré (Máximo 1L)", "17:00 PM - Cardio Intenso (500ml)", 
+                    "19:00 PM - Universidad (500ml)", "22:00 PM - Shutdown Líquidos"
+                ]
+                
+                nuevos_valores = [hoy_str]
+                hubo_cambios = False
+                
+                for i in range(8):
+                    estado_db = True if valores_db[i+1].upper() == 'TRUE' else False
+                    check = st.checkbox(etiquetas[i], value=estado_db, key=f"agua_{i}")
+                    nuevos_valores.append(str(check).upper())
+                    if check != estado_db: hubo_cambios = True
+                
+                if hubo_cambios:
+                    if st.button("💾 Guardar en Base de Datos", type="primary", use_container_width=True):
+                        # Actualiza la fila entera en Google Sheets
+                        rango = f"A{celda_hoy.row}:I{celda_hoy.row}"
+                        sheet.update(range_name=rango, values=[nuevos_valores])
+                        st.success("¡Agua sincronizada en la nube!")
+                        st.rerun()
+            else:
+                st.error("No se pudo conectar a Google Sheets. Revisa tu archivo JSON en los Secrets.")
+
         with t3:
-            st.subheader("💧 Protocolo de Hidratación Completo")
-            st.checkbox("04:30 AM - Sal + Café", key="h1")
-            st.checkbox("05:00 AM - 500ml Gym", key="h2")
-            st.checkbox("08:00 AM - 12PM - 500ml Oficina", key="h3")
-            st.checkbox("12:00 PM - Almuerzo (250ml) + Caminata", key="h4")
-            st.checkbox("13:30 PM - Tereré (Máximo 1L)", key="h5")
-            st.checkbox("17:00 PM - Cardio Intenso (500ml)", key="h6")
-            st.checkbox("19:00 PM - Universidad (500ml)", key="h7")
-            st.checkbox("22:00 PM - Shutdown Líquidos", key="h8")
+            st.subheader("Volumen por Sesión")
+            df_plot = df_r.sort_values("Fecha_Sort").tail(10)
+            st.line_chart(df_plot.set_index("Fecha")["Volumen"])
