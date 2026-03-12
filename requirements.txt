@@ -3,4 +3,5 @@ requests
 pandas
 python-dotenv
 groq
+gspread
 
