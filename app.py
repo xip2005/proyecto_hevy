@@ -21,38 +21,19 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-# --- DIAGNÓSTICO EXTREMO DE BASE DE DATOS ---
-def conectar_db_debug():
-    if "GOOGLE_JSON" not in st.secrets:
-        st.error("❌ ERROR 1: Streamlit no encuentra la variable 'GOOGLE_JSON' en los Secrets.")
-        return None
-    
-    try:
-        secreto_crudo = st.secrets["GOOGLE_JSON"]
-        creds_dict = json.loads(secreto_crudo)
-    except Exception as e:
-        st.error(f"❌ ERROR 2 (Formato JSON): El texto en Secrets está mal copiado o le faltan las 3 comillas simples. Detalle: {e}")
-        return None
-
+# --- CONEXIÓN A BASE DE DATOS ---
+@st.cache_resource
+def conectar_db():
     try:
         scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+        creds_dict = json.loads(st.secrets["GOOGLE_JSON"])
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client_gs = gspread.authorize(creds)
-    except Exception as e:
-        st.error(f"❌ ERROR 3 (Autenticación): Google rechazó las credenciales. Detalle: {e}")
+        return client_gs.open("Hevy_DB").sheet1
+    except:
         return None
 
-    try:
-        hoja = client_gs.open("Hevy_DB").sheet1
-        return hoja
-    except gspread.exceptions.SpreadsheetNotFound:
-        st.error("❌ ERROR 4 (No encuentra el archivo): O la planilla NO se llama exactamente 'Hevy_DB', o te olvidaste de invitar al correo del robot como Editor.")
-        return None
-    except Exception as e:
-        st.error(f"❌ ERROR 5 (Desconocido): Falló al abrir la planilla. Detalle: {e}")
-        return None
-
-sheet = conectar_db_debug()
+sheet = conectar_db()
 
 # 2. MOTOR DE DATOS (Hevy)
 @st.cache_data(ttl=300) 
@@ -111,7 +92,6 @@ else:
         
         st.title("⚡ Hevy Coach AI")
 
-        # --- FILTRO EN CASCADA ---
         col_1, col_2 = st.columns([1, 1])
         with col_1:
             rutinas_unicas = df_e["Rutina"].unique()
@@ -122,7 +102,6 @@ else:
 
         semana_sel = st.slider("Fase del Ciclo:", 1, 8, value=sem_auto)
 
-        # --- REGLAS LÓGICAS ---
         reglas = {
             1: ("Calibración", "NO llegues al fallo. Peso base."),
             2: ("Sobrecarga", "Sube peso o haz +1 repetición."),
@@ -136,13 +115,12 @@ else:
         fase, desc = reglas[semana_sel]
         p_max = df_e[df_e["Ejercicio"] == ejercicio_sel]["Peso (Kg)"].max()
 
-        # --- COACH IA AUTOMÁTICO ---
         st.markdown(f"### 🧠 Coach: {ejercicio_sel}")
         if client:
             @st.cache_data(ttl=60) 
             def analizar_con_ia(sem, fas, reg, ej, maximo):
                 try:
-                    prompt = f"Coach, Pablo (estudiante sistemas, 21 años) está en Semana {sem} ({fas}). Regla: {reg}. Ejercicio: {ej}. Récord: {maximo}kg. Meta: Definición extrema. Consejo táctico corto en español paraguayo."
+                    prompt = f"Coach, Pablo (21 años) está en Semana {sem} ({fas}). Regla: {reg}. Ejercicio: {ej}. Récord: {maximo}kg. Da un consejo corto y motivador en español paraguayo."
                     chat = client.chat.completions.create(
                         messages=[{"role": "user", "content": prompt}],
                         model="llama-3.3-70b-versatile",
@@ -155,24 +133,24 @@ else:
         
         st.write("---")
 
-        # --- TABS DE DATOS ---
-        t1, t2, t3 = st.tabs(["📈 Tabla Fuerza", "💧 Agua DB", "📊 Rendimiento"])
+        t1, t2, t3 = st.tabs(["📈 Fuerza", "💧 Agua DB", "📊 Rendimiento"])
         
         with t1:
-            st.subheader(f"Historial: {ejercicio_sel}")
             df_hist = df_e[df_e["Ejercicio"] == ejercicio_sel].sort_values("Fecha_Sort", ascending=False)
             st.dataframe(df_hist[["Fecha", "Peso (Kg)", "Reps", "1RM Est."]], use_container_width=True, hide_index=True)
 
         with t2:
-            st.subheader("💧 Base de Datos: Hidratación")
+            st.subheader("💧 Registro de Hidratación")
             if sheet:
                 tz = pytz.timezone(ZONA_HORARIA)
                 hoy_str = datetime.now(tz).strftime('%Y-%m-%d')
                 
-                try:
-                    celda_hoy = sheet.find(hoy_str, in_column=1)
-                except gspread.exceptions.CellNotFound:
-                    sheet.append_row([hoy_str, "FALSE", "FALSE", "FALSE", "FALSE", "FALSE", "FALSE", "FALSE", "FALSE"])
+                # FIX CRÍTICO: Buscar celda hoy
+                celda_hoy = sheet.find(hoy_str, in_column=1)
+                
+                # Si es un día nuevo, crear la fila automáticamente
+                if celda_hoy is None:
+                    sheet.append_row([hoy_str] + ["FALSE"] * 8)
                     celda_hoy = sheet.find(hoy_str, in_column=1)
                 
                 valores_db = sheet.row_values(celda_hoy.row)
@@ -180,30 +158,29 @@ else:
                 
                 etiquetas = [
                     "04:30 AM - Sal + Café", "05:00 AM - 500ml Gym", 
-                    "08:00 AM - 12PM - 500ml Oficina", "12:00 PM - Almuerzo (250ml) + Caminata", 
-                    "13:30 PM - Tereré (Máximo 1L)", "17:00 PM - Cardio Intenso (500ml)", 
-                    "19:00 PM - Universidad (500ml)", "22:00 PM - Shutdown Líquidos"
+                    "08:00 AM - 500ml Oficina", "12:00 PM - Almuerzo + Caminata", 
+                    "13:30 PM - Tereré (Máximo 1L)", "17:00 PM - Cardio (500ml)", 
+                    "19:00 PM - Universidad (500ml)", "22:00 PM - Shutdown"
                 ]
                 
                 nuevos_valores = [hoy_str]
                 hubo_cambios = False
                 
                 for i in range(8):
-                    estado_db = True if valores_db[i+1].upper() == 'TRUE' else False
-                    check = st.checkbox(etiquetas[i], value=estado_db, key=f"agua_{i}")
+                    val_original = str(valores_db[i+1]).upper() == 'TRUE'
+                    check = st.checkbox(etiquetas[i], value=val_original, key=f"h_{i}")
                     nuevos_valores.append(str(check).upper())
-                    if check != estado_db: hubo_cambios = True
+                    if check != val_original: hubo_cambios = True
                 
                 if hubo_cambios:
-                    if st.button("💾 Guardar en Base de Datos", type="primary", use_container_width=True):
+                    if st.button("💾 Guardar Cambios", type="primary", use_container_width=True):
                         rango = f"A{celda_hoy.row}:I{celda_hoy.row}"
                         sheet.update(range_name=rango, values=[nuevos_valores])
-                        st.success("¡Agua sincronizada en la nube!")
+                        st.success("¡Base de Datos actualizada!")
                         st.rerun()
             else:
-                st.error("La pestaña de Agua está desactivada hasta que se resuelva el error rojo de arriba.")
+                st.info("Conectando con Google Sheets...")
 
         with t3:
-            st.subheader("Volumen por Sesión")
             df_plot = df_r.sort_values("Fecha_Sort").tail(10)
             st.line_chart(df_plot.set_index("Fecha")["Volumen"])
