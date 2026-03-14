@@ -173,7 +173,7 @@ else:
                     if st.button("🔮 Analizar Plato", type="primary"):
                         with st.spinner("Gemini analizando la foto..."):
                             try:
-                                prompt = "Sos un nutricionista paraguayo. Mirá esta foto e identificá la comida. Estimá las calorías totales y los macros (Proteína, Carbohidratos, Grasas en gramos). Sé breve."
+                                prompt = "Sos un nutricionista profesional paraguayo. Mirá esta foto e identificá la comida. Estimá las calorías totales y los macros (Proteína, Carbohidratos, Grasas en gramos). Sé breve."
                                 respuesta = model_gemini.generate_content([prompt, imagen_pil])
                                 st.write("---")
                                 st.markdown("### ✍️ Análisis Nutricional")
