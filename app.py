@@ -7,6 +7,8 @@ import json
 import gspread
 from google.oauth2.service_account import Credentials
 from groq import Groq
+import google.generativeai as genai  # NUEVO: Gemini SDK
+from PIL import Image               # NUEVO: Para procesar imágenes
 from datetime import datetime
 import pytz
 from dotenv import load_dotenv
@@ -19,9 +21,18 @@ API_KEY = os.getenv("HEVY_API_KEY")
 ZONA_HORARIA = os.getenv("TIMEZONE", "America/Asuncion") 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+# NUEVO: Configuración de Gemini para Visión
+gemini_key = st.secrets.get("GEMINI_API_KEY")
+model_gemini = None
+if gemini_key:
+    genai.configure(api_key=gemini_key)
+    # Usamos Gemini 1.5 Flash por velocidad y costos bajos
+    model_gemini = genai.GenerativeModel('gemini-1.5-flash')
 
-# --- CONEXIÓN A BASE DE DATOS ---
+# Configuración de Groq para Texto
+client_groq = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+
+# --- CONEXIÓN A BASE DE DATOS (Google Sheets) ---
 @st.cache_resource
 def conectar_db():
     try:
@@ -41,6 +52,7 @@ def obtener_datos_hevy_auto():
     url = "https://api.hevyapp.com/v1/workouts"
     headers = {"api-key": API_KEY, "Accept": "application/json"}
     todos = []
+    # Buscamos solo las últimas 2 páginas para que cargue rápido
     for p in range(1, 3): 
         res = requests.get(url, headers=headers, params={"page": p, "pageSize": 10})
         if res.status_code == 200:
@@ -92,6 +104,7 @@ else:
         
         st.title("⚡ Hevy Coach AI")
 
+        # --- FILTRO EN CASCADA ---
         col_1, col_2 = st.columns([1, 1])
         with col_1:
             rutinas_unicas = df_e["Rutina"].unique()
@@ -102,6 +115,7 @@ else:
 
         semana_sel = st.slider("Fase del Ciclo:", 1, 8, value=sem_auto)
 
+        # --- REGLAS LÓGICAS ---
         reglas = {
             1: ("Calibración", "NO llegues al fallo. Peso base."),
             2: ("Sobrecarga", "Sube peso o haz +1 repetición."),
@@ -115,13 +129,14 @@ else:
         fase, desc = reglas[semana_sel]
         p_max = df_e[df_e["Ejercicio"] == ejercicio_sel]["Peso (Kg)"].max()
 
+        # --- COACH IA AUTOMÁTICO (Groq) ---
         st.markdown(f"### 🧠 Coach: {ejercicio_sel}")
-        if client:
+        if client_groq:
             @st.cache_data(ttl=60) 
             def analizar_con_ia(sem, fas, reg, ej, maximo):
                 try:
-                    prompt = f"Coach, Pablo (21 años) está en Semana {sem} ({fas}). Regla: {reg}. Ejercicio: {ej}. Récord: {maximo}kg. Da un consejo corto y motivador en español paraguayo."
-                    chat = client.chat.completions.create(
+                    prompt = f"Coach, Pablo (21 años) está en Semana {sem} ({fas}). Regla: {reg}. Ejercicio: {ej}. Récord: {maximo}kg. Da un consejo corto, táctico y motivador en español paraguayo."
+                    chat = client_groq.chat.completions.create(
                         messages=[{"role": "user", "content": prompt}],
                         model="llama-3.3-70b-versatile",
                         temperature=0.7
@@ -133,19 +148,51 @@ else:
         
         st.write("---")
 
-        t1, t2, t3 = st.tabs(["📈 Fuerza", "💧 Agua DB", "📊 Rendimiento"])
+        # --- TABS DE DATOS ---
+        # NUEVO: Orden lógico de Tabs (Fuerza -> Nutrición -> Agua -> Rendimiento)
+        t1, t2, t3, t4 = st.tabs(["📈 Fuerza", "📸 Nutri Visión", "💧 Agua DB", "📊 Rendimiento"])
         
         with t1:
+            st.subheader(f"Historial: {ejercicio_sel}")
             df_hist = df_e[df_e["Ejercicio"] == ejercicio_sel].sort_values("Fecha_Sort", ascending=False)
             st.dataframe(df_hist[["Fecha", "Peso (Kg)", "Reps", "1RM Est."]], use_container_width=True, hide_index=True)
 
+        # NUEVO: Pestaña de Nutrición con Gemini
         with t2:
+            st.subheader("📸 Análisis de Plato por IA")
+            
+            if model_gemini:
+                # Subida de imagen
+                foto = st.file_uploader("Subí tu plato de comida (JPG/PNG)", type=["jpg", "jpeg", "png"])
+                
+                if foto is not None:
+                    # Abrimos la imagen para que Python la entienda (PIL)
+                    imagen_pil = Image.open(foto)
+                    # Mostramos la foto al usuario
+                    st.image(imagen_pil, caption="Foto cargada", use_container_width=True)
+                    
+                    if st.button("🔮 Analizar Plato", type="primary"):
+                        with st.spinner("Gemini analizando el plato..."):
+                            try:
+                                # Prompt específico para comida paraguaya y macros
+                                prompt = "Sos un nutricionista paraguayo. Mirá esta foto e identificá la comida (tené en cuenta si es comida paraguaya). Estimá las calorías totales y los macros (Proteína, Carbohidratos, Grasas en gramos). Sé breve."
+                                # Enviamos el prompt y la imagen
+                                respuesta = model_gemini.generate_content([prompt, imagen_pil])
+                                st.write("---")
+                                st.markdown("### ✍️ Análisis Nutricional")
+                                st.write(respuesta.text)
+                            except Exception as e:
+                                st.error(f"Error al analizar con Gemini: {e}")
+            else:
+                st.error("⚠️ Configura GEMINI_API_KEY en los Secrets para usar esta función.")
+
+        with t3:
             st.subheader("💧 Registro de Hidratación")
             if sheet:
                 tz = pytz.timezone(ZONA_HORARIA)
                 hoy_str = datetime.now(tz).strftime('%Y-%m-%d')
                 
-                # FIX CRÍTICO: Buscar celda hoy
+                # Buscar celda hoy
                 celda_hoy = sheet.find(hoy_str, in_column=1)
                 
                 # Si es un día nuevo, crear la fila automáticamente
@@ -181,6 +228,7 @@ else:
             else:
                 st.info("Conectando con Google Sheets...")
 
-        with t3:
+        with t4:
+            st.subheader("Volumen por Sesión")
             df_plot = df_r.sort_values("Fecha_Sort").tail(10)
             st.line_chart(df_plot.set_index("Fecha")["Volumen"])
