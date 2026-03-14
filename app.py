@@ -150,7 +150,8 @@ else:
 
         # --- TABS DE DATOS ---
         # NUEVO: Orden lógico de Tabs (Fuerza -> Nutrición -> Agua -> Rendimiento)
-        t1, t2, t3, t4 = st.tabs(["📈 Fuerza", "📸 Nutri Visión", "💧 Agua DB", "📊 Rendimiento"])
+        # Actualizá esta línea para tener 5 pestañas
+        t1, t2, t3, t4, t5 = st.tabs(["📈 Fuerza", "🥗 Nutrición", "💪 Físico", "💧 Agua DB", "📊 Rendimiento"])
         
         with t1:
             st.subheader(f"Historial: {ejercicio_sel}")
@@ -182,8 +183,31 @@ else:
                                 st.error(f"Error al analizar con Gemini: {e}")
             else:
                 st.error("⚠️ Configura GEMINI_API_KEY en los Secrets para usar esta función.")
-
-        with t3:
+       with t3:
+            st.subheader("💪 Análisis de Postura y Simetría")
+            
+            if model_gemini:
+                # PRO-TIP: Usamos key="cam_fisico" para que no choque con la cámara de comida
+                foto_fisico = st.camera_input("Mostrá tu físico actual (Frontal o Espalda) 📸", key="cam_fisico")
+                
+                if foto_fisico is not None:
+                    imagen_pil_fisico = Image.open(foto_fisico)
+                    
+                    if st.button("🔍 Evaluar Físico", type="primary"):
+                        with st.spinner("El Coach IA está evaluando tu musculatura..."):
+                            try:
+                                # Prompt diseñado para biomecánica y estética
+                                prompt_fisico = "Sos un entrenador experto en biomecánica y fisicoculturismo. Analizá esta foto del físico de tu cliente. Evaluá brevemente la simetría, postura corporal, nivel de definición general y áreas musculares que destacan. Usá un tono motivador en español paraguayo, directo y sin vueltas. (Nota: No des diagnósticos médicos, solo evaluación deportiva)."
+                                respuesta_fisico = model_gemini.generate_content([prompt_fisico, imagen_pil_fisico])
+                                st.write("---")
+                                st.markdown("### 📋 Devolución de tu Coach")
+                                st.write(respuesta_fisico.text)
+                            except Exception as e:
+                                st.error(f"Error en el análisis de Gemini: {e}")
+            else:
+                st.error("⚠️ Configura GEMINI_API_KEY en los Secrets.")
+                
+        with t4:
             st.subheader("💧 Registro de Hidratación")
             if sheet:
                 tz = pytz.timezone(ZONA_HORARIA)
