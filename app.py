@@ -202,7 +202,7 @@ else:
                     if st.button("🔍 Evaluar Físico", type="primary"):
                         with st.spinner("El Coach IA está evaluando tu musculatura..."):
                             try:
-                                prompt_fisico = "Sos un entrenador experto en biomecánica y fisicoculturismo. Analizá esta foto del físico de tu cliente. Evaluá brevemente la simetría, postura corporal, nivel de definición general y áreas musculares que destacan. Usá un tono motivador en español paraguayo, directo y sin vueltas. (Nota: No des diagnósticos médicos, solo evaluación deportiva)."
+                                prompt_fisico = "Sos un entrenador experto en biomecánica y fisicoculturismo. Analizá esta foto del físico de tu cliente. Evaluá brevemente la simetría, postura corporal, nivel de definición general y áreas musculares que destacan. Usá un tono motivador en español, directo y sin vueltas. (Nota: No des diagnósticos médicos, solo evaluación deportiva)."
                                 respuesta_fisico = model_gemini.generate_content([prompt_fisico, imagen_pil_fisico])
                                 st.write("---")
                                 st.markdown("### 📋 Devolución de tu Coach")
