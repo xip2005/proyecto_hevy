@@ -12,6 +12,7 @@ from PIL import Image
 from datetime import datetime
 import pytz
 from dotenv import load_dotenv
+import time # NUEVO: Para pausar mientras se sube el video
 
 # 1. CONFIGURACIÓN DEL SISTEMA
 st.set_page_config(page_title="Hevy Coach AI", page_icon="⚡", layout="centered", initial_sidebar_state="collapsed")
@@ -21,12 +22,12 @@ API_KEY = os.getenv("HEVY_API_KEY")
 ZONA_HORARIA = os.getenv("TIMEZONE", "America/Asuncion") 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Configuración de Gemini para Visión
+# Configuración de Gemini para Visión y Video
 gemini_key = st.secrets.get("GEMINI_API_KEY")
 model_gemini = None
 if gemini_key:
     genai.configure(api_key=gemini_key)
-    model_gemini = genai.GenerativeModel('gemini-3-flash-preview')
+    model_gemini = genai.GenerativeModel('gemini-1.5-pro-latest') # Usamos Pro porque Flash a veces falla con video largo
 
 # Configuración de Groq para Texto
 client_groq = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
@@ -102,7 +103,6 @@ else:
         
         st.title("⚡ Hevy Coach AI")
 
-        # --- FILTRO EN CASCADA ---
         col_1, col_2 = st.columns([1, 1])
         with col_1:
             rutinas_unicas = df_e["Rutina"].unique()
@@ -113,7 +113,6 @@ else:
 
         semana_sel = st.slider("Fase del Ciclo:", 1, 8, value=sem_auto)
 
-        # --- REGLAS LÓGICAS ---
         reglas = {
             1: ("Calibración", "NO llegues al fallo. Peso base."),
             2: ("Sobrecarga", "Sube peso o haz +1 repetición."),
@@ -127,7 +126,6 @@ else:
         fase, desc = reglas[semana_sel]
         p_max = df_e[df_e["Ejercicio"] == ejercicio_sel]["Peso (Kg)"].max()
 
-        # --- COACH IA AUTOMÁTICO (Groq) ---
         st.markdown(f"### 🧠 Coach: {ejercicio_sel}")
         if client_groq:
             @st.cache_data(ttl=60) 
@@ -146,8 +144,8 @@ else:
         
         st.write("---")
 
-        # --- TABS DE DATOS ---
-        t1, t2, t3, t4, t5 = st.tabs(["📈 Fuerza", "🥗 Nutrición", "💪 Físico", "💧 Agua DB", "📊 Rendimiento"])
+        # --- 6 TABS ---
+        t1, t2, t3, t4, t5, t6 = st.tabs(["📈 Fuerza", "🥗 Nutrición", "💪 Físico", "📹 Técnica", "💧 Agua DB", "📊 Rendimiento"])
         
         with t1:
             st.subheader(f"Historial: {ejercicio_sel}")
@@ -155,55 +153,72 @@ else:
             st.dataframe(df_hist[["Fecha", "Peso (Kg)", "Reps", "1RM Est."]], use_container_width=True, hide_index=True)
 
         with t2:
-            st.subheader("📸 Análisis de Plato")
+            st.subheader("📸 Análisis de Plato (Fotos Múltiples)")
             if model_gemini:
                 opcion_nutri = st.radio("Método de carga:", ["📸 Usar Cámara", "📁 Subir de Galería"], horizontal=True, key="radio_nutri")
                 
-                foto_nutri = None
+                fotos_nutri_lista = []
+                
                 if opcion_nutri == "📸 Usar Cámara":
-                    foto_nutri = st.camera_input("Sacale una foto a tu comida 🥗", key="cam_nutri")
+                    foto_cam_nutri = st.camera_input("Sacale una foto a tu comida 🥗", key="cam_nutri")
+                    if foto_cam_nutri: fotos_nutri_lista.append(foto_cam_nutri)
                 else:
-                    foto_nutri = st.file_uploader("Subí una foto de tu galería (JPG/PNG)", type=["jpg", "jpeg", "png"], key="file_nutri")
+                    # accept_multiple_files=True permite seleccionar varias
+                    fotos_gal_nutri = st.file_uploader("Subí tus fotos (JPG/PNG)", type=["jpg", "jpeg", "png"], key="file_nutri", accept_multiple_files=True)
+                    if fotos_gal_nutri: fotos_nutri_lista.extend(fotos_gal_nutri)
                     
-                if foto_nutri is not None:
-                    imagen_pil_nutri = Image.open(foto_nutri)
-                    if opcion_nutri == "📁 Subir de Galería":
-                        st.image(imagen_pil_nutri, caption="Foto cargada", use_container_width=True)
+                if fotos_nutri_lista:
+                    imagenes_pil = []
+                    # Mostrar todas las fotos cargadas
+                    cols = st.columns(len(fotos_nutri_lista))
+                    for idx, f in enumerate(fotos_nutri_lista):
+                        img_pil = Image.open(f)
+                        imagenes_pil.append(img_pil)
+                        cols[idx].image(img_pil, use_container_width=True)
                         
-                    if st.button("🔮 Analizar Plato", type="primary"):
-                        with st.spinner("Gemini analizando la foto..."):
+                    if st.button("🔮 Analizar Plato(s)", type="primary", key="btn_nutri"):
+                        with st.spinner("Gemini analizando..."):
                             try:
-                                prompt = "Sos un nutricionista profesional paraguayo. Mirá esta foto e identificá la comida. Estimá las calorías totales y los macros (Proteína, Carbohidratos, Grasas en gramos). Sé breve."
-                                respuesta = model_gemini.generate_content([prompt, imagen_pil_nutri])
+                                prompt = "Sos un nutricionista profesional paraguayo. Mirá estas fotos e identificá la comida. Estimá las calorías totales conjuntas y los macros (Proteína, Carbohidratos, Grasas en gramos). Sé breve."
+                                # Le pasamos el prompt y la LISTA de imágenes
+                                contenido = [prompt] + imagenes_pil
+                                respuesta = model_gemini.generate_content(contenido)
                                 st.write("---")
                                 st.markdown("### ✍️ Análisis Nutricional")
                                 st.write(respuesta.text)
                             except Exception as e:
                                 st.error(f"Error al analizar con Gemini: {e}")
             else:
-                st.error("⚠️ Configura GEMINI_API_KEY en los Secrets para usar esta función.")
+                st.error("⚠️ Configura GEMINI_API_KEY en los Secrets.")
 
         with t3:
-            st.subheader("💪 Análisis de Postura y Simetría")
+            st.subheader("💪 Análisis de Postura (Fotos Múltiples)")
             if model_gemini:
                 opcion_fisico = st.radio("Método de carga:", ["📸 Usar Cámara", "📁 Subir de Galería"], horizontal=True, key="radio_fisico")
                 
-                foto_fisico = None
+                fotos_fisico_lista = []
+                
                 if opcion_fisico == "📸 Usar Cámara":
-                    foto_fisico = st.camera_input("Mostrá tu físico actual (Frontal o Espalda) 📸", key="cam_fisico")
+                    foto_cam_fisico = st.camera_input("Mostrá tu físico 📸", key="cam_fisico")
+                    if foto_cam_fisico: fotos_fisico_lista.append(foto_cam_fisico)
                 else:
-                    foto_fisico = st.file_uploader("Subí una foto de tu físico (JPG/PNG)", type=["jpg", "jpeg", "png"], key="file_fisico")
+                    fotos_gal_fisico = st.file_uploader("Subí tus fotos (Frente/Espalda)", type=["jpg", "jpeg", "png"], key="file_fisico", accept_multiple_files=True)
+                    if fotos_gal_fisico: fotos_fisico_lista.extend(fotos_gal_fisico)
                     
-                if foto_fisico is not None:
-                    imagen_pil_fisico = Image.open(foto_fisico)
-                    if opcion_fisico == "📁 Subir de Galería":
-                        st.image(imagen_pil_fisico, caption="Foto cargada", use_container_width=True)
+                if fotos_fisico_lista:
+                    imagenes_pil_f = []
+                    cols_f = st.columns(len(fotos_fisico_lista))
+                    for idx, f in enumerate(fotos_fisico_lista):
+                        img_pil = Image.open(f)
+                        imagenes_pil_f.append(img_pil)
+                        cols_f[idx].image(img_pil, use_container_width=True)
                         
-                    if st.button("🔍 Evaluar Físico", type="primary"):
-                        with st.spinner("El Coach IA está evaluando tu musculatura..."):
+                    if st.button("🔍 Evaluar Físico", type="primary", key="btn_fisico"):
+                        with st.spinner("El Coach IA está evaluando..."):
                             try:
-                                prompt_fisico = "Sos un entrenador experto en biomecánica y fisicoculturismo. Analizá esta foto del físico de tu cliente. Evaluá brevemente la simetría, postura corporal, nivel de definición general y áreas musculares que destacan. Usá un tono motivador en español, directo y sin vueltas. (Nota: No des diagnósticos médicos, solo evaluación deportiva)."
-                                respuesta_fisico = model_gemini.generate_content([prompt_fisico, imagen_pil_fisico])
+                                prompt_fisico = "Sos un entrenador experto en biomecánica. Analizá estas fotos. Evaluá brevemente la simetría, postura, y definición general. Usá un tono motivador en español, directo y sin vueltas."
+                                contenido_f = [prompt_fisico] + imagenes_pil_f
+                                respuesta_fisico = model_gemini.generate_content(contenido_f)
                                 st.write("---")
                                 st.markdown("### 📋 Devolución de tu Coach")
                                 st.write(respuesta_fisico.text)
@@ -212,7 +227,55 @@ else:
             else:
                 st.error("⚠️ Configura GEMINI_API_KEY en los Secrets.")
                 
+        # --- NUEVA PESTAÑA: ANÁLISIS DE VIDEO ---
         with t4:
+            st.subheader(f"📹 Evaluar Técnica: {ejercicio_sel}")
+            st.info("Subí un video corto (máximo 15-20 segundos) para que la IA evalúe tu postura y rango de movimiento.")
+            
+            if model_gemini:
+                video_file = st.file_uploader("Subí tu video de entrenamiento (MP4)", type=["mp4", "mov"], key="vid_tec")
+                
+                if video_file is not None:
+                    st.video(video_file)
+                    
+                    if st.button("🚀 Analizar Técnica en Video", type="primary", use_container_width=True):
+                        with st.spinner("Subiendo video a la nube de Google (esto puede tardar unos segundos)..."):
+                            try:
+                                # 1. Guardar temporalmente el video
+                                temp_path = f"temp_video.mp4"
+                                with open(temp_path, "wb") as f:
+                                    f.write(video_file.getbuffer())
+                                
+                                # 2. Subir a Gemini
+                                video_gemini = genai.upload_file(path=temp_path)
+                                st.info("Video subido. Esperando que Google procese los fotogramas...")
+                                
+                                # 3. Esperar a que el video esté listo (puede tardar en procesar)
+                                while video_gemini.state.name == "PROCESSING":
+                                    time.sleep(3)
+                                    video_gemini = genai.get_file(video_gemini.name)
+                                
+                                if video_gemini.state.name == "FAILED":
+                                    st.error("Error al procesar el video en los servidores de Google.")
+                                else:
+                                    # 4. Analizar
+                                    prompt_tec = f"Sos un entrenador de Powerlifting/Culturismo. Analizá mi técnica en el ejercicio: {ejercicio_sel}. Decime si el rango de movimiento es correcto, si ves fallos en la postura (ej: espalda encorvada, rodillas colapsadas) y cómo puedo mejorarlo. Sé conciso y directo."
+                                    respuesta_tec = model_gemini.generate_content([prompt_tec, video_gemini])
+                                    
+                                    st.write("---")
+                                    st.markdown("### 🎯 Corrección Técnica")
+                                    st.write(respuesta_tec.text)
+                                    
+                                    # 5. Limpieza
+                                    genai.delete_file(video_gemini.name)
+                                    os.remove(temp_path)
+                                    
+                            except Exception as e:
+                                st.error(f"Error al analizar el video: {e}")
+            else:
+                 st.error("⚠️ Configura GEMINI_API_KEY en los Secrets.")
+
+        with t5:
             st.subheader("💧 Registro de Hidratación")
             if sheet:
                 tz = pytz.timezone(ZONA_HORARIA)
@@ -252,7 +315,7 @@ else:
             else:
                 st.info("Conectando con Google Sheets...")
 
-        with t5:
+        with t6:
             st.subheader("Volumen por Sesión")
             df_plot = df_r.sort_values("Fecha_Sort").tail(10)
             st.line_chart(df_plot.set_index("Fecha")["Volumen"])
