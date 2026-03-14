@@ -26,7 +26,6 @@ gemini_key = st.secrets.get("GEMINI_API_KEY")
 model_gemini = None
 if gemini_key:
     genai.configure(api_key=gemini_key)
-    # Tu descubrimiento: el modelo correcto que funciona perfecto
     model_gemini = genai.GenerativeModel('gemini-3-flash-preview')
 
 # Configuración de Groq para Texto
@@ -155,29 +154,27 @@ else:
             df_hist = df_e[df_e["Ejercicio"] == ejercicio_sel].sort_values("Fecha_Sort", ascending=False)
             st.dataframe(df_hist[["Fecha", "Peso (Kg)", "Reps", "1RM Est."]], use_container_width=True, hide_index=True)
 
-       with t2:
+        with t2:
             st.subheader("📸 Análisis de Plato")
             if model_gemini:
-                # LA LÓGICA UX: Un botón para elegir el método
-                opcion_nutri = st.radio("Método de carga:", ["📸 Usar Cámara", "📁 Subir de Galería"], horizontal=True)
+                opcion_nutri = st.radio("Método de carga:", ["📸 Usar Cámara", "📁 Subir de Galería"], horizontal=True, key="radio_nutri")
                 
-                foto = None
+                foto_nutri = None
                 if opcion_nutri == "📸 Usar Cámara":
-                    foto = st.camera_input("Sacale una foto a tu comida 🥗")
+                    foto_nutri = st.camera_input("Sacale una foto a tu comida 🥗", key="cam_nutri")
                 else:
-                    foto = st.file_uploader("Subí una foto de tu galería (JPG/PNG)", type=["jpg", "jpeg", "png"])
+                    foto_nutri = st.file_uploader("Subí una foto de tu galería (JPG/PNG)", type=["jpg", "jpeg", "png"], key="file_nutri")
                     
-                if foto is not None:
-                    imagen_pil = Image.open(foto)
-                    # Mostrar la imagen si viene de la galería
+                if foto_nutri is not None:
+                    imagen_pil_nutri = Image.open(foto_nutri)
                     if opcion_nutri == "📁 Subir de Galería":
-                        st.image(imagen_pil, caption="Foto cargada", use_container_width=True)
+                        st.image(imagen_pil_nutri, caption="Foto cargada", use_container_width=True)
                         
                     if st.button("🔮 Analizar Plato", type="primary"):
                         with st.spinner("Gemini analizando la foto..."):
                             try:
                                 prompt = "Sos un nutricionista profesional paraguayo. Mirá esta foto e identificá la comida. Estimá las calorías totales y los macros (Proteína, Carbohidratos, Grasas en gramos). Sé breve."
-                                respuesta = model_gemini.generate_content([prompt, imagen_pil])
+                                respuesta = model_gemini.generate_content([prompt, imagen_pil_nutri])
                                 st.write("---")
                                 st.markdown("### ✍️ Análisis Nutricional")
                                 st.write(respuesta.text)
@@ -186,36 +183,34 @@ else:
             else:
                 st.error("⚠️ Configura GEMINI_API_KEY en los Secrets para usar esta función.")
 
-       with t2:
-            st.subheader("📸 Análisis de Plato")
+        with t3:
+            st.subheader("💪 Análisis de Postura y Simetría")
             if model_gemini:
-                # LA LÓGICA UX: Un botón para elegir el método
-                opcion_nutri = st.radio("Método de carga:", ["📸 Usar Cámara", "📁 Subir de Galería"], horizontal=True)
+                opcion_fisico = st.radio("Método de carga:", ["📸 Usar Cámara", "📁 Subir de Galería"], horizontal=True, key="radio_fisico")
                 
-                foto = None
-                if opcion_nutri == "📸 Usar Cámara":
-                    foto = st.camera_input("Sacale una foto a tu comida 🥗")
+                foto_fisico = None
+                if opcion_fisico == "📸 Usar Cámara":
+                    foto_fisico = st.camera_input("Mostrá tu físico actual (Frontal o Espalda) 📸", key="cam_fisico")
                 else:
-                    foto = st.file_uploader("Subí una foto de tu galería (JPG/PNG)", type=["jpg", "jpeg", "png"])
+                    foto_fisico = st.file_uploader("Subí una foto de tu físico (JPG/PNG)", type=["jpg", "jpeg", "png"], key="file_fisico")
                     
-                if foto is not None:
-                    imagen_pil = Image.open(foto)
-                    # Mostrar la imagen si viene de la galería
-                    if opcion_nutri == "📁 Subir de Galería":
-                        st.image(imagen_pil, caption="Foto cargada", use_container_width=True)
+                if foto_fisico is not None:
+                    imagen_pil_fisico = Image.open(foto_fisico)
+                    if opcion_fisico == "📁 Subir de Galería":
+                        st.image(imagen_pil_fisico, caption="Foto cargada", use_container_width=True)
                         
-                    if st.button("🔮 Analizar Plato", type="primary"):
-                        with st.spinner("Gemini analizando la foto..."):
+                    if st.button("🔍 Evaluar Físico", type="primary"):
+                        with st.spinner("El Coach IA está evaluando tu musculatura..."):
                             try:
-                                prompt = "Sos un nutricionista profesional paraguayo. Mirá esta foto e identificá la comida. Estimá las calorías totales y los macros (Proteína, Carbohidratos, Grasas en gramos). Sé breve."
-                                respuesta = model_gemini.generate_content([prompt, imagen_pil])
+                                prompt_fisico = "Sos un entrenador experto en biomecánica y fisicoculturismo. Analizá esta foto del físico de tu cliente. Evaluá brevemente la simetría, postura corporal, nivel de definición general y áreas musculares que destacan. Usá un tono motivador en español paraguayo, directo y sin vueltas. (Nota: No des diagnósticos médicos, solo evaluación deportiva)."
+                                respuesta_fisico = model_gemini.generate_content([prompt_fisico, imagen_pil_fisico])
                                 st.write("---")
-                                st.markdown("### ✍️ Análisis Nutricional")
-                                st.write(respuesta.text)
+                                st.markdown("### 📋 Devolución de tu Coach")
+                                st.write(respuesta_fisico.text)
                             except Exception as e:
-                                st.error(f"Error al analizar con Gemini: {e}")
+                                st.error(f"Error en el análisis de Gemini: {e}")
             else:
-                st.error("⚠️ Configura GEMINI_API_KEY en los Secrets para usar esta función.")
+                st.error("⚠️ Configura GEMINI_API_KEY en los Secrets.")
                 
         with t4:
             st.subheader("💧 Registro de Hidratación")
