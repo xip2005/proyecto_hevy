@@ -7,8 +7,8 @@ import json
 import gspread
 from google.oauth2.service_account import Credentials
 from groq import Groq
-import google.generativeai as genai  # NUEVO: Gemini SDK
-from PIL import Image               # NUEVO: Para procesar imágenes
+import google.generativeai as genai  
+from PIL import Image               
 from datetime import datetime
 import pytz
 from dotenv import load_dotenv
@@ -21,12 +21,12 @@ API_KEY = os.getenv("HEVY_API_KEY")
 ZONA_HORARIA = os.getenv("TIMEZONE", "America/Asuncion") 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# NUEVO: Configuración de Gemini para Visión
+# Configuración de Gemini para Visión
 gemini_key = st.secrets.get("GEMINI_API_KEY")
 model_gemini = None
 if gemini_key:
     genai.configure(api_key=gemini_key)
-    # Usamos Gemini 1.5 Flash por velocidad y costos bajos
+    # Tu descubrimiento: el modelo correcto que funciona perfecto
     model_gemini = genai.GenerativeModel('gemini-3-flash-preview')
 
 # Configuración de Groq para Texto
@@ -52,7 +52,6 @@ def obtener_datos_hevy_auto():
     url = "https://api.hevyapp.com/v1/workouts"
     headers = {"api-key": API_KEY, "Accept": "application/json"}
     todos = []
-    # Buscamos solo las últimas 2 páginas para que cargue rápido
     for p in range(1, 3): 
         res = requests.get(url, headers=headers, params={"page": p, "pageSize": 10})
         if res.status_code == 200:
@@ -149,8 +148,6 @@ else:
         st.write("---")
 
         # --- TABS DE DATOS ---
-        # NUEVO: Orden lógico de Tabs (Fuerza -> Nutrición -> Agua -> Rendimiento)
-        # Actualizá esta línea para tener 5 pestañas
         t1, t2, t3, t4, t5 = st.tabs(["📈 Fuerza", "🥗 Nutrición", "💪 Físico", "💧 Agua DB", "📊 Rendimiento"])
         
         with t1:
@@ -158,19 +155,12 @@ else:
             df_hist = df_e[df_e["Ejercicio"] == ejercicio_sel].sort_values("Fecha_Sort", ascending=False)
             st.dataframe(df_hist[["Fecha", "Peso (Kg)", "Reps", "1RM Est."]], use_container_width=True, hide_index=True)
 
-        # NUEVO: Pestaña de Nutrición con Gemini
-        # --- Pestaña de Nutrición con Cámara en Vivo ---
         with t2:
             st.subheader("📸 Análisis de Plato en Vivo")
-            
             if model_gemini:
-                # EL CAMBIO CLAVE: Activamos la cámara del celular/PC
                 foto = st.camera_input("Sacale una foto a tu comida 🥗")
-                
                 if foto is not None:
-                    # Abrimos la imagen de la cámara
                     imagen_pil = Image.open(foto)
-                    
                     if st.button("🔮 Analizar Plato", type="primary"):
                         with st.spinner("Gemini analizando la foto..."):
                             try:
@@ -183,20 +173,16 @@ else:
                                 st.error(f"Error al analizar con Gemini: {e}")
             else:
                 st.error("⚠️ Configura GEMINI_API_KEY en los Secrets para usar esta función.")
-       with t3:
+
+        with t3:
             st.subheader("💪 Análisis de Postura y Simetría")
-            
             if model_gemini:
-                # PRO-TIP: Usamos key="cam_fisico" para que no choque con la cámara de comida
                 foto_fisico = st.camera_input("Mostrá tu físico actual (Frontal o Espalda) 📸", key="cam_fisico")
-                
                 if foto_fisico is not None:
                     imagen_pil_fisico = Image.open(foto_fisico)
-                    
                     if st.button("🔍 Evaluar Físico", type="primary"):
                         with st.spinner("El Coach IA está evaluando tu musculatura..."):
                             try:
-                                # Prompt diseñado para biomecánica y estética
                                 prompt_fisico = "Sos un entrenador experto en biomecánica y fisicoculturismo. Analizá esta foto del físico de tu cliente. Evaluá brevemente la simetría, postura corporal, nivel de definición general y áreas musculares que destacan. Usá un tono motivador en español paraguayo, directo y sin vueltas. (Nota: No des diagnósticos médicos, solo evaluación deportiva)."
                                 respuesta_fisico = model_gemini.generate_content([prompt_fisico, imagen_pil_fisico])
                                 st.write("---")
@@ -213,10 +199,8 @@ else:
                 tz = pytz.timezone(ZONA_HORARIA)
                 hoy_str = datetime.now(tz).strftime('%Y-%m-%d')
                 
-                # Buscar celda hoy
                 celda_hoy = sheet.find(hoy_str, in_column=1)
                 
-                # Si es un día nuevo, crear la fila automáticamente
                 if celda_hoy is None:
                     sheet.append_row([hoy_str] + ["FALSE"] * 8)
                     celda_hoy = sheet.find(hoy_str, in_column=1)
@@ -249,7 +233,7 @@ else:
             else:
                 st.info("Conectando con Google Sheets...")
 
-        with t4:
+        with t5:
             st.subheader("Volumen por Sesión")
             df_plot = df_r.sort_values("Fecha_Sort").tail(10)
             st.line_chart(df_plot.set_index("Fecha")["Volumen"])
