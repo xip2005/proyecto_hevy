@@ -158,25 +158,22 @@ else:
             st.dataframe(df_hist[["Fecha", "Peso (Kg)", "Reps", "1RM Est."]], use_container_width=True, hide_index=True)
 
         # NUEVO: Pestaña de Nutrición con Gemini
+        # --- Pestaña de Nutrición con Cámara en Vivo ---
         with t2:
-            st.subheader("📸 Análisis de Plato por IA")
+            st.subheader("📸 Análisis de Plato en Vivo")
             
             if model_gemini:
-                # Subida de imagen
-                foto = st.file_uploader("Subí tu plato de comida (JPG/PNG)", type=["jpg", "jpeg", "png"])
+                # EL CAMBIO CLAVE: Activamos la cámara del celular/PC
+                foto = st.camera_input("Sacale una foto a tu comida 🥗")
                 
                 if foto is not None:
-                    # Abrimos la imagen para que Python la entienda (PIL)
+                    # Abrimos la imagen de la cámara
                     imagen_pil = Image.open(foto)
-                    # Mostramos la foto al usuario
-                    st.image(imagen_pil, caption="Foto cargada", use_container_width=True)
                     
                     if st.button("🔮 Analizar Plato", type="primary"):
-                        with st.spinner("Gemini analizando el plato..."):
+                        with st.spinner("Gemini analizando la foto..."):
                             try:
-                                # Prompt específico para comida paraguaya y macros
-                                prompt = "Sos un nutricionista paraguayo. Mirá esta foto e identificá la comida (tené en cuenta si es comida paraguaya). Estimá las calorías totales y los macros (Proteína, Carbohidratos, Grasas en gramos). Sé breve."
-                                # Enviamos el prompt y la imagen
+                                prompt = "Sos un nutricionista paraguayo. Mirá esta foto e identificá la comida. Estimá las calorías totales y los macros (Proteína, Carbohidratos, Grasas en gramos). Sé breve."
                                 respuesta = model_gemini.generate_content([prompt, imagen_pil])
                                 st.write("---")
                                 st.markdown("### ✍️ Análisis Nutricional")
