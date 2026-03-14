@@ -27,7 +27,7 @@ model_gemini = None
 if gemini_key:
     genai.configure(api_key=gemini_key)
     # Usamos Gemini 1.5 Flash por velocidad y costos bajos
-    model_gemini = genai.GenerativeModel('gemini-1.5-flash-latest')
+    model_gemini = genai.GenerativeModel('gemini-3-flash-preview')
 
 # Configuración de Groq para Texto
 client_groq = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
