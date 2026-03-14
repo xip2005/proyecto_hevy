@@ -27,7 +27,7 @@ gemini_key = st.secrets.get("GEMINI_API_KEY")
 model_gemini = None
 if gemini_key:
     genai.configure(api_key=gemini_key)
-    model_gemini = genai.GenerativeModel('gemini-1.5-pro-latest') # Usamos Pro porque Flash a veces falla con video largo
+    model_gemini = genai.GenerativeModel('gemini-3-flash-preview') # Usamos Pro porque Flash a veces falla con video largo
 
 # Configuración de Groq para Texto
 client_groq = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
