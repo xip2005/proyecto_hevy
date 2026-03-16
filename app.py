@@ -292,7 +292,7 @@ else:
                 
                 etiquetas = [
                     "04:30 AM - Sal + Café", "05:00 AM - 500ml Gym", 
-                    "08:00 AM - 500ml Oficina", "12:00 PM - Almuerzo + Caminata", 
+                    "08:00 AM - 500ml Oficina", "12:00 PM - Almuerzo + 250ML", 
                     "13:30 PM - Tereré (Máximo 1L)", "17:00 PM - Cardio (500ml)", 
                     "19:00 PM - Universidad (500ml)", "22:00 PM - Shutdown"
                 ]
