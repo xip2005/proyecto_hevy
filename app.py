@@ -154,13 +154,17 @@ def comparar_mes(por_mes, ejercicio_sel):
 if not API_KEY:
     st.error("⚠️ Configura HEVY_API_KEY.")
 else:
-    datos_crudos = obtener_datos_hevy_auto()
-    if datos_crudos:
-        df_r, df_e = procesar_datos(datos_crudos)
-        sem_auto = detectar_semana_actual(datos_crudos)
-        por_mes = agrupar_por_mes(df_e, df_r)
+    try:
+        with st.spinner("Cargando datos de Hevy..."):
+            datos_crudos = obtener_datos_hevy_auto()
+        if not datos_crudos:
+            st.warning("⚠️ No se pudieron cargar los entrenamientos. Verificá tu conexión a internet.")
+        else:
+            df_r, df_e = procesar_datos(datos_crudos)
+            sem_auto = detectar_semana_actual(datos_crudos)
+            por_mes = agrupar_por_mes(df_e, df_r)
 
-        reglas = {
+            reglas = {
             1: ("Calibración", "NO llegues al fallo. Peso base."),
             2: ("Sobrecarga", "Sube peso o haz +1 repetición."),
             3: ("Fuerza Pura", "Peso máximo para 10-12 reps."),
@@ -433,3 +437,7 @@ else:
             st.subheader("Volumen por Sesión")
             df_plot = df_r.sort_values("Fecha_Sort").tail(10)
             st.line_chart(df_plot.set_index("Fecha")["Volumen"])
+    except Exception as e:
+        st.error(f"❌ Error inesperado: {e}")
+        import traceback
+        st.code(traceback.format_exc())
