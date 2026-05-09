@@ -52,8 +52,8 @@ def obtener_datos_hevy_auto():
     url = "https://api.hevyapp.com/v1/workouts"
     headers = {"api-key": API_KEY, "Accept": "application/json"}
     todos = []
-    for p in range(1, 3): 
-        res = requests.get(url, headers=headers, params={"page": p, "pageSize": 10})
+    for p in range(1, 7): 
+        res = requests.get(url, headers=headers, params={"page": p, "pageSize": 15})
         if res.status_code == 200:
             datos = res.json()
             if "workouts" in datos: todos.extend(datos["workouts"])
@@ -92,6 +92,64 @@ def procesar_datos(datos_json):
             df["Fecha_Sort"] = f_dt
     return df_r, df_e
 
+# --- AGREGACIÓN MENSUAL PARA COMPARATIVAS ---
+def agrupar_por_mes(df_e, df_r):
+    if df_e.empty:
+        return {}
+    df_e = df_e.copy()
+    df_r = df_r.copy()
+    try:
+        tz = pytz.timezone(ZONA_HORARIA)
+    except:
+        tz = pytz.UTC
+    df_e["Mes"] = pd.to_datetime(df_e["Fecha Cruda"], utc=True).dt.tz_convert(tz).dt.to_period("M").astype(str)
+    df_r["Mes"] = pd.to_datetime(df_r["Fecha Cruda"], utc=True).dt.tz_convert(tz).dt.to_period("M").astype(str)
+    meses = sorted(df_e["Mes"].unique())
+    resultado = {}
+    for mes in meses:
+        mask_r = df_r["Mes"] == mes
+        mask_e = df_e["Mes"] == mes
+        ejercicios_mes = {}
+        for ej in df_e.loc[mask_e, "Ejercicio"].unique():
+            mask_ej = mask_e & (df_e["Ejercicio"] == ej)
+            df_ej = df_e.loc[mask_ej]
+            ejercicios_mes[ej] = {
+                "peso_max": df_ej["Peso (Kg)"].max(),
+                "rm_max": df_ej["1RM Est."].max(),
+            }
+        resultado[mes] = {
+            "volumen_total": df_r.loc[mask_r, "Volumen"].sum(),
+            "ejercicios": ejercicios_mes,
+        }
+    return resultado
+
+def comparar_mes(por_mes, ejercicio_sel):
+    if not por_mes:
+        return None
+    meses = sorted(por_mes.keys())
+    if len(meses) < 2:
+        return None
+    actual_mes = meses[-1]
+    anterior_mes = meses[-2]
+    datos_act = por_mes[actual_mes]["ejercicios"].get(ejercicio_sel)
+    datos_ant = por_mes[anterior_mes]["ejercicios"].get(ejercicio_sel)
+    if not datos_act or not datos_ant:
+        return None
+    def _delta(act, ant):
+        if ant == 0:
+            return None
+        return round(((act - ant) / ant) * 100, 1)
+    return {
+        "mes_actual": actual_mes,
+        "mes_anterior": anterior_mes,
+        "peso_max_act": datos_act["peso_max"],
+        "peso_max_ant": datos_ant["peso_max"],
+        "rm_max_act": datos_act["rm_max"],
+        "rm_max_ant": datos_ant["rm_max"],
+        "delta_peso": _delta(datos_act["peso_max"], datos_ant["peso_max"]),
+        "delta_rm": _delta(datos_act["rm_max"], datos_ant["rm_max"]),
+    }
+
 # 3. INTERFAZ Y LÓGICA
 if not API_KEY:
     st.error("⚠️ Configura HEVY_API_KEY.")
@@ -100,18 +158,7 @@ else:
     if datos_crudos:
         df_r, df_e = procesar_datos(datos_crudos)
         sem_auto = detectar_semana_actual(datos_crudos)
-        
-        st.title("⚡ Hevy Coach AI")
-
-        col_1, col_2 = st.columns([1, 1])
-        with col_1:
-            rutinas_unicas = df_e["Rutina"].unique()
-            rutina_sel = st.selectbox("1. Día de Entrenamiento:", rutinas_unicas)
-        with col_2:
-            ejercicios_del_dia = df_e[df_e["Rutina"] == rutina_sel]["Ejercicio"].unique()
-            ejercicio_sel = st.selectbox("2. Ejercicio Actual:", ejercicios_del_dia)
-
-        semana_sel = st.slider("Fase del Ciclo:", 1, 8, value=sem_auto)
+        por_mes = agrupar_por_mes(df_e, df_r)
 
         reglas = {
             1: ("Calibración", "NO llegues al fallo. Peso base."),
@@ -123,12 +170,79 @@ else:
             7: ("Prueba Final", "Pesos récord con bajada de 4s."),
             8: ("Descarga", "Baja todo al 50%. 1 serie menos.")
         }
+        semana_sel = st.slider("Fase del Ciclo:", 1, 8, value=sem_auto)
         fase, desc = reglas[semana_sel]
-        p_max = df_e[df_e["Ejercicio"] == ejercicio_sel]["Peso (Kg)"].max()
 
-        st.markdown(f"### 🧠 Coach: {ejercicio_sel}")
+        st.markdown("""
+        <style>
+        .stApp { background-color: #0d1117; }
+        .metric-card {
+            background: #161b22; border-radius: 10px; padding: 12px 8px;
+            border: 1px solid #30363d; text-align: center;
+        }
+        .metric-value { color: #f0f6fc; font-size: 1.5rem; font-weight: 800; }
+        .metric-label { color: #8b949e; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .delta-pos { color: #3fb950; font-size: 0.8rem; font-weight: 700; }
+        .delta-neg { color: #f85149; font-size: 0.8rem; font-weight: 700; }
+        .stButton button { font-size: 1.1rem !important; padding: 14px !important; border-radius: 12px !important; font-weight: 600 !important; }
+        div[data-testid="stVerticalBlock"] { gap: 0.3rem !important; }
+        section[data-testid="stSidebar"] { display: none; }
+        </style>
+        """, unsafe_allow_html=True)
+
+        st.title("⚡ Hevy Coach AI")
+        st.caption(f"Semana {semana_sel} · {fase} · {desc}")
+
+        ejercicios_unicos = sorted(df_e["Ejercicio"].dropna().unique())
+        ejercicio_sel = st.selectbox("Ejercicio:", ejercicios_unicos)
+
+        cmp = comparar_mes(por_mes, ejercicio_sel)
+
+        if cmp:
+            st.markdown("---")
+            st.subheader(f"📊 {cmp['mes_actual']} vs {cmp['mes_anterior']}")
+
+            def _delta_html(val):
+                if val is None: return ""
+                if val > 0: return f'<span class="delta-pos">▲ +{val}%</span>'
+                if val < 0: return f'<span class="delta-neg">▼ {val}%</span>'
+                return ""
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">1RM Máx</div>
+                    <div class="metric-value">{cmp['rm_max_act']:.1f} kg</div>
+                    {_delta_html(cmp.get('delta_rm'))}
+                </div>
+                """, unsafe_allow_html=True)
+            with c2:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Peso Máx</div>
+                    <div class="metric-value">{cmp['peso_max_act']:.1f} kg</div>
+                    {_delta_html(cmp.get('delta_peso'))}
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.subheader(f"📈 1RM Mensual: {ejercicio_sel}")
+        meses_ordenados = sorted(por_mes.keys())
+        rm_data = []
+        for m in meses_ordenados:
+            ej_data = por_mes[m]["ejercicios"].get(ejercicio_sel)
+            if ej_data:
+                rm_data.append({"Mes": m, "1RM Est.": ej_data["rm_max"]})
+        if rm_data:
+            df_grafico = pd.DataFrame(rm_data).set_index("Mes")
+            st.line_chart(df_grafico, use_container_width=True)
+
+        st.markdown("---")
+        p_max = df_e[df_e["Ejercicio"] == ejercicio_sel]["Peso (Kg)"].max()
+        st.subheader("🧠 Coach")
         if client_groq:
-            @st.cache_data(ttl=60) 
+            @st.cache_data(ttl=60)
             def analizar_con_ia(sem, fas, reg, ej, maximo):
                 try:
                     prompt = f"Coach, Pablo (21 años) está en Semana {sem} ({fas}). Regla: {reg}. Ejercicio: {ej}. Récord: {maximo}kg. Da un consejo corto, táctico y motivador en español."
@@ -138,10 +252,10 @@ else:
                         temperature=0.7
                     )
                     return chat.choices[0].message.content
-                except: return "Coach analizando..."
-            
+                except:
+                    return "Coach analizando..."
             st.info(analizar_con_ia(semana_sel, fase, desc, ejercicio_sel, p_max))
-        
+
         st.write("---")
 
         # --- 6 TABS ---
