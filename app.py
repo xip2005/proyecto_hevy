@@ -195,6 +195,8 @@ else:
                 if mask.any():
                     ultima = df_rutinas[mask].sort_values("Fecha_Sort", ascending=False).iloc[0]
                     rutinas_por_dia[dia] = ultima["Rutina"]
+            if not rutinas_por_dia:
+                rutinas_por_dia = {r: r for r in sorted(df_e["Rutina"].dropna().unique())}
             opciones_dia = list(rutinas_por_dia.keys())
             dia_sel = st.selectbox("Día de Entrenamiento:", opciones_dia)
             rutina_sel = rutinas_por_dia[dia_sel]
