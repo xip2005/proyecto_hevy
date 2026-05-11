@@ -192,23 +192,6 @@ else:
         semana_sel = st.slider("Fase del Ciclo:", 1, 8, value=sem_auto)
         fase, desc = reglas[semana_sel]
 
-        st.markdown("""
-        <style>
-        .stApp { background-color: #0d1117; }
-        .metric-card {
-            background: #161b22; border-radius: 10px; padding: 12px 8px;
-            border: 1px solid #30363d; text-align: center;
-        }
-        .metric-value { color: #f0f6fc; font-size: 1.5rem; font-weight: 800; }
-        .metric-label { color: #8b949e; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; }
-        .delta-pos { color: #3fb950; font-size: 0.8rem; font-weight: 700; }
-        .delta-neg { color: #f85149; font-size: 0.8rem; font-weight: 700; }
-        .stButton button { font-size: 1.1rem !important; padding: 14px !important; border-radius: 12px !important; font-weight: 600 !important; }
-        div[data-testid="stVerticalBlock"] { gap: 0.3rem !important; }
-        section[data-testid="stSidebar"] { display: none; }
-        </style>
-        """, unsafe_allow_html=True)
-
         st.title("⚡ Hevy Coach AI")
         st.caption(f"Semana {semana_sel} · {fase} · {desc}")
 
@@ -218,34 +201,14 @@ else:
         cmp = comparar_mes(por_mes, ejercicio_sel)
 
         if cmp:
-            st.markdown("---")
+            st.divider()
             st.subheader(f"📊 {cmp['mes_actual']} vs {cmp['mes_anterior']}")
 
-            def _delta_html(val):
-                if val is None: return ""
-                if val > 0: return f'<span class="delta-pos">▲ +{val}%</span>'
-                if val < 0: return f'<span class="delta-neg">▼ {val}%</span>'
-                return ""
-
             c1, c2 = st.columns(2)
-            with c1:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-label">1RM Máx</div>
-                    <div class="metric-value">{cmp['rm_max_act']:.1f} kg</div>
-                    {_delta_html(cmp.get('delta_rm'))}
-                </div>
-                """, unsafe_allow_html=True)
-            with c2:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-label">Peso Máx</div>
-                    <div class="metric-value">{cmp['peso_max_act']:.1f} kg</div>
-                    {_delta_html(cmp.get('delta_peso'))}
-                </div>
-                """, unsafe_allow_html=True)
+            c1.metric("1RM Máx", f"{cmp['rm_max_act']:.1f} kg", delta=f"{cmp['delta_rm']}%" if cmp.get('delta_rm') is not None else None)
+            c2.metric("Peso Máx", f"{cmp['peso_max_act']:.1f} kg", delta=f"{cmp['delta_peso']}%" if cmp.get('delta_peso') is not None else None)
 
-        st.markdown("---")
+        st.divider()
         st.subheader(f"📈 1RM Mensual: {ejercicio_sel}")
         meses_ordenados = sorted(por_mes.keys())
         rm_data = []
@@ -257,7 +220,7 @@ else:
             df_grafico = pd.DataFrame(rm_data).set_index("Mes")
             st.line_chart(df_grafico, use_container_width=True)
 
-        st.markdown("---")
+        st.divider()
         p_max = df_e[df_e["Ejercicio"] == ejercicio_sel]["Peso (Kg)"].max()
         st.subheader("🧠 Coach")
         if client_groq:
@@ -275,7 +238,7 @@ else:
                     return "Coach analizando..."
             st.info(analizar_con_ia(semana_sel, fase, desc, ejercicio_sel, p_max))
 
-        st.write("---")
+        st.divider()
 
         # --- 6 TABS ---
         t1, t2, t3, t4, t5, t6 = st.tabs(["📈 Fuerza", "🥗 Nutrición", "💪 Físico", "📹 Técnica", "💧 Agua DB", "📊 Rendimiento"])
