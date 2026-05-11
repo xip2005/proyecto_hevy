@@ -186,17 +186,13 @@ else:
 
         col_1, col_2 = st.columns(2)
         with col_1:
-            # Agrupar rutinas por día y traer solo la última de cada día
+            # Agrupar rutinas por la primera palabra del título y mostrar solo la más reciente
             df_rutinas = df_e[["Rutina", "Fecha_Sort"]].drop_duplicates()
-            dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            df_rutinas["Grupo"] = df_rutinas["Rutina"].str.split().str[0]
             rutinas_por_dia = {}
-            for dia in dias_semana:
-                mask = df_rutinas["Rutina"].str.startswith(dia, na=False)
-                if mask.any():
-                    ultima = df_rutinas[mask].sort_values("Fecha_Sort", ascending=False).iloc[0]
-                    rutinas_por_dia[dia] = ultima["Rutina"]
-            if not rutinas_por_dia:
-                rutinas_por_dia = {r: r for r in sorted(df_e["Rutina"].dropna().unique())}
+            for grupo, sub in df_rutinas.groupby("Grupo"):
+                ultima = sub.sort_values("Fecha_Sort", ascending=False).iloc[0]
+                rutinas_por_dia[grupo] = ultima["Rutina"]
             opciones_dia = list(rutinas_por_dia.keys())
             dia_sel = st.selectbox("Día de Entrenamiento:", opciones_dia)
             rutina_sel = rutinas_por_dia[dia_sel]
