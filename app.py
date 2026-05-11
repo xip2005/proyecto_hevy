@@ -194,8 +194,23 @@ else:
         # ── SELECTORES: DÍA → EJERCICIO ──
         c1, c2 = st.columns(2)
         with c1:
+            # Detectar día en cualquier formato (LUNES-Push, MARTES FULL BODY, TORSO-LUNES...)
             df_rutinas = df_e[["Rutina", "Fecha_Sort"]].drop_duplicates()
-            df_rutinas["Grupo"] = df_rutinas["Rutina"].str.split("-").str[0]
+            dias_clave = ["LUNES", "MARTES", "MIERCOLES", "MIÉRCOLES", "JUEVES", "VIERNES", "SABADO", "SÁBADO", "DOMINGO"]
+            dias_limpio = {"MIERCOLES": "MIÉRCOLES", "SABADO": "SÁBADO"}
+
+            def extraer_dia(titulo):
+                t = titulo.upper().replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U")
+                for d in ["MIERCOLES", "SABADO"]:
+                    if d in t:
+                        return dias_limpio[d]
+                for d in ["LUNES", "MARTES", "JUEVES", "VIERNES", "DOMINGO"]:
+                    if d in t:
+                        return d.capitalize()
+                return None
+
+            df_rutinas["Grupo"] = df_rutinas["Rutina"].apply(extraer_dia)
+            df_rutinas = df_rutinas[df_rutinas["Grupo"].notna()]
             rutinas_por_dia = {}
             for grupo, sub in df_rutinas.groupby("Grupo"):
                 ultima = sub.sort_values("Fecha_Sort", ascending=False).iloc[0]
