@@ -47,16 +47,24 @@ def conectar_db():
 sheet = conectar_db()
 
 # 2. MOTOR DE DATOS (Hevy)
-@st.cache_data(ttl=300) 
+@st.cache_data(ttl=300)
 def obtener_datos_hevy_auto():
     url = "https://api.hevyapp.com/v1/workouts"
     headers = {"api-key": API_KEY, "Accept": "application/json"}
     todos = []
-    for p in range(1, 7): 
+    errores = []
+    for p in range(1, 7):
         res = requests.get(url, headers=headers, params={"page": p, "pageSize": 15})
         if res.status_code == 200:
             datos = res.json()
-            if "workouts" in datos: todos.extend(datos["workouts"])
+            if "workouts" in datos:
+                todos.extend(datos["workouts"])
+            else:
+                errores.append(f"Pág {p}: 200 pero sin 'workouts'. Keys: {list(datos.keys())}")
+        else:
+            errores.append(f"Pág {p}: HTTP {res.status_code} - {res.text[:200]}")
+    if errores:
+        st.warning("⚠️ Errores API:\n" + "\n".join(errores))
     return {"workouts": todos} if todos else None
 
 def detectar_semana_actual(datos_json):
