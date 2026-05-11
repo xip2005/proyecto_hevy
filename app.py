@@ -186,8 +186,18 @@ else:
 
         col_1, col_2 = st.columns(2)
         with col_1:
-            rutinas_unicas = sorted(df_e["Rutina"].dropna().unique())
-            rutina_sel = st.selectbox("Día de Entrenamiento:", rutinas_unicas)
+            # Agrupar rutinas por día y traer solo la última de cada día
+            df_rutinas = df_e[["Rutina", "Fecha_Sort"]].drop_duplicates()
+            dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            rutinas_por_dia = {}
+            for dia in dias_semana:
+                mask = df_rutinas["Rutina"].str.startswith(dia, na=False)
+                if mask.any():
+                    ultima = df_rutinas[mask].sort_values("Fecha_Sort", ascending=False).iloc[0]
+                    rutinas_por_dia[dia] = ultima["Rutina"]
+            opciones_dia = list(rutinas_por_dia.keys())
+            dia_sel = st.selectbox("Día de Entrenamiento:", opciones_dia)
+            rutina_sel = rutinas_por_dia[dia_sel]
         with col_2:
             ejercicios_del_dia = sorted(df_e[df_e["Rutina"] == rutina_sel]["Ejercicio"].dropna().unique())
             ejercicio_sel = st.selectbox("Ejercicio:", ejercicios_del_dia)
