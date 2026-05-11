@@ -186,9 +186,9 @@ else:
 
         col_1, col_2 = st.columns(2)
         with col_1:
-            # Agrupar rutinas por la primera palabra del título y mostrar solo la más reciente
+            # Agrupar por día (1er elemento antes del guión) y mostrar solo el último
             df_rutinas = df_e[["Rutina", "Fecha_Sort"]].drop_duplicates()
-            df_rutinas["Grupo"] = df_rutinas["Rutina"].str.split().str[0]
+            df_rutinas["Grupo"] = df_rutinas["Rutina"].str.split("-").str[0]
             rutinas_por_dia = {}
             for grupo, sub in df_rutinas.groupby("Grupo"):
                 ultima = sub.sort_values("Fecha_Sort", ascending=False).iloc[0]
