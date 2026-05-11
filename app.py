@@ -96,7 +96,7 @@ def procesar_datos(datos_json):
             df["Fecha_Sort"] = f_dt
     return df_r, df_e
 
-# --- AGREGACIÓN MENSUAL ---
+# 3. AGREGACIÓN MENSUAL
 def agrupar_por_mes(df_e, df_r):
     if df_e.empty:
         return {}
@@ -154,7 +154,7 @@ def comparar_mes(por_mes, ejercicio_sel):
         "delta_rm": _delta(datos_act["rm_max"], datos_ant["rm_max"]),
     }
 
-# 3. INTERFAZ Y LÓGICA
+# 4. INTERFAZ
 if not API_KEY:
     st.error("⚠️ Configura HEVY_API_KEY en el archivo .env")
 else:
@@ -164,6 +164,7 @@ else:
         except Exception as e:
             st.error(f"❌ Error al conectar con Hevy: {e}")
             datos_crudos = None
+
     if not datos_crudos:
         st.warning("⚠️ No se pudieron cargar los entrenamientos. Verificá tu conexión a internet.")
     else:
@@ -182,68 +183,67 @@ else:
             8: ("Descarga", "Baja todo al 50%. 1 serie menos.")
         }
 
+        # ── HEADER ──
         st.title("⚡ Hevy Coach AI")
+        semana_sel = st.slider("Fase del Ciclo:", 1, 8, value=sem_auto)
+        fase, desc = reglas[semana_sel]
+        st.caption(f"Semana {semana_sel} · {fase} · {desc}")
 
-        col_1, col_2 = st.columns(2)
-        with col_1:
-            # Agrupar por día (1er elemento antes del guión) y mostrar solo el último
+        st.divider()
+
+        # ── SELECTORES: DÍA → EJERCICIO ──
+        c1, c2 = st.columns(2)
+        with c1:
             df_rutinas = df_e[["Rutina", "Fecha_Sort"]].drop_duplicates()
             df_rutinas["Grupo"] = df_rutinas["Rutina"].str.split("-").str[0]
             rutinas_por_dia = {}
             for grupo, sub in df_rutinas.groupby("Grupo"):
                 ultima = sub.sort_values("Fecha_Sort", ascending=False).iloc[0]
                 rutinas_por_dia[grupo] = ultima["Rutina"]
-            opciones_dia = list(rutinas_por_dia.keys())
-            dia_sel = st.selectbox("Día de Entrenamiento:", opciones_dia)
+            dia_sel = st.selectbox("Día:", list(rutinas_por_dia.keys()))
             rutina_sel = rutinas_por_dia[dia_sel]
-        with col_2:
+        with c2:
             ejercicios_del_dia = sorted(df_e[df_e["Rutina"] == rutina_sel]["Ejercicio"].dropna().unique())
             ejercicio_sel = st.selectbox("Ejercicio:", ejercicios_del_dia)
 
-        semana_sel = st.slider("Fase del Ciclo:", 1, 8, value=sem_auto)
-        fase, desc = reglas[semana_sel]
-        st.caption(f"Semana {semana_sel} · {fase} · {desc}")
+        # ── COMPARACIÓN MES A MES ──
+        cmp = comparar_mes(por_mes, ejercicio_sel)
 
-        # --- COACH IA ---
+        # ── COACH IA ──
+        st.subheader("🧠 Coach")
         p_max = df_e[df_e["Ejercicio"] == ejercicio_sel]["Peso (Kg)"].max()
         if client_groq:
             @st.cache_data(ttl=60)
-            def analizar_con_ia(sem, fas, reg, ej, maximo):
+            def analizar_con_ia(sem, fas, reg, ej, maximo, comparacion):
+                base = f"Coach, Pablo (21 años) | Semana {sem} ({fas}) | Ejercicio: {ej} | Récord: {maximo}kg | Regla: {reg}."
+                if comparacion:
+                    base += f" | vs mes anterior: 1RM {comparacion['rm_max_ant']:.1f}→{comparacion['rm_max_act']:.1f}kg ({comparacion['delta_rm']}%), Peso {comparacion['peso_max_ant']:.1f}→{comparacion['peso_max_act']:.1f}kg ({comparacion['delta_peso']}%)."
+                base += " Da un consejo corto, táctico y motivador en español. Máximo 3 frases."
                 try:
-                    prompt = f"Coach, Pablo (21 años) está en Semana {sem} ({fas}). Regla: {reg}. Ejercicio: {ej}. Récord: {maximo}kg. Da un consejo corto, táctico y motivador en español."
                     chat = client_groq.chat.completions.create(
-                        messages=[{"role": "user", "content": prompt}],
+                        messages=[{"role": "user", "content": base}],
                         model="llama-3.3-70b-versatile",
                         temperature=0.7
                     )
                     return chat.choices[0].message.content
                 except:
                     return "Coach analizando..."
-            st.info(analizar_con_ia(semana_sel, fase, desc, ejercicio_sel, p_max))
+            st.info(analizar_con_ia(semana_sel, fase, desc, ejercicio_sel, p_max, cmp))
+        else:
+            st.info("⚙️ Configurá GROQ_API_KEY en .env para activar el coach IA.")
 
-        st.divider()
-
-        # --- COMENTARIOS DEL DÍA ---
-        notas_dia = df_e[(df_e["Rutina"] == rutina_sel) & (df_e["Notas"].str.strip() != "")][["Ejercicio", "Notas"]].drop_duplicates()
-        if not notas_dia.empty:
-            st.subheader("📝 Comentarios del día")
-            for _, row in notas_dia.iterrows():
-                st.info(f"**{row['Ejercicio']}**: {row['Notas']}")
-            st.divider()
-
-        # --- COMPARACIÓN MES A MES ---
-        cmp = comparar_mes(por_mes, ejercicio_sel)
+        # ── KPIs MES A MES ──
         if cmp:
+            st.divider()
             st.subheader(f"📊 {cmp['mes_actual']} vs {cmp['mes_anterior']}")
-            c1, c2 = st.columns(2)
-            c1.metric("1RM Máx", f"{cmp['rm_max_act']:.1f} kg",
-                      delta=f"{cmp['delta_rm']}%" if cmp.get('delta_rm') is not None else None)
-            c2.metric("Peso Máx", f"{cmp['peso_max_act']:.1f} kg",
-                      delta=f"{cmp['delta_peso']}%" if cmp.get('delta_peso') is not None else None)
+            k1, k2 = st.columns(2)
+            k1.metric("1RM Máx", f"{cmp['rm_max_act']:.1f} kg",
+                       delta=f"{cmp['delta_rm']}%" if cmp.get('delta_rm') is not None else None)
+            k2.metric("Peso Máx", f"{cmp['peso_max_act']:.1f} kg",
+                       delta=f"{cmp['delta_peso']}%" if cmp.get('delta_peso') is not None else None)
 
+        # ── GRÁFICO 1RM MENSUAL ──
         st.divider()
-
-        # --- GRÁFICO 1RM MENSUAL ---
         st.subheader(f"📈 1RM Mensual: {ejercicio_sel}")
         meses_ordenados = sorted(por_mes.keys())
         rm_data = []
@@ -255,118 +255,137 @@ else:
             df_grafico = pd.DataFrame(rm_data).set_index("Mes")
             st.area_chart(df_grafico, use_container_width=True)
 
+        # ── COMENTARIOS DEL DÍA ──
+        notas_dia = df_e[(df_e["Rutina"] == rutina_sel) & (df_e["Notas"].str.strip() != "")][["Ejercicio", "Notas"]].drop_duplicates()
+        if not notas_dia.empty:
+            st.divider()
+            st.subheader("📝 Comentarios del día")
+            for _, row in notas_dia.iterrows():
+                st.info(f"**{row['Ejercicio']}**: {row['Notas']}")
+
         st.divider()
 
-        # --- 6 TABS ---
-        t1, t2, t3, t4, t5, t6 = st.tabs(["📈 Fuerza", "🥗 Nutrición", "💪 Físico", "📹 Técnica", "💧 Agua DB", "📊 Rendimiento"])
+        # ── 6 SECCIONES (2×3) ──
+        if "tab" not in st.session_state:
+            st.session_state.tab = "Fuerza"
 
-        with t1:
+        secciones = ["Fuerza", "Nutrición", "Físico", "Técnica", "Agua", "Rendimiento"]
+        iconos = ["📈", "🥗", "💪", "📹", "💧", "📊"]
+
+        r1c1, r1c2, r1c3 = st.columns(3)
+        r2c1, r2c2, r2c3 = st.columns(3)
+        fila1 = [r1c1, r1c2, r1c3]
+        fila2 = [r2c1, r2c2, r2c3]
+
+        for i, (sec, ico) in enumerate(zip(secciones, iconos)):
+            col = fila1[i] if i < 3 else fila2[i - 3]
+            tipo = "primary" if st.session_state.tab == sec else "secondary"
+            if col.button(f"{ico} {sec}", key=f"tab_{sec}", use_container_width=True, type=tipo):
+                st.session_state.tab = sec
+                st.rerun()
+
+        st.divider()
+
+        tab = st.session_state.tab
+
+        # ── CONTENIDO DE CADA SECCIÓN ──
+        if tab == "Fuerza":
             st.subheader(f"Historial: {ejercicio_sel}")
             df_hist = df_e[df_e["Ejercicio"] == ejercicio_sel].sort_values("Fecha_Sort", ascending=False)
             st.dataframe(df_hist[["Fecha", "Peso (Kg)", "Reps", "1RM Est."]], use_container_width=True, hide_index=True)
 
-        with t2:
-            st.subheader("📸 Análisis de Plato (Fotos Múltiples)")
+        elif tab == "Nutrición":
+            st.subheader("📸 Análisis de Plato")
             if model_gemini:
-                opcion_nutri = st.radio("Método de carga:", ["📸 Usar Cámara", "📁 Subir de Galería"], horizontal=True, key="radio_nutri")
-                fotos_nutri_lista = []
-                if opcion_nutri == "📸 Usar Cámara":
-                    foto_cam_nutri = st.camera_input("Sacale una foto a tu comida 🥗", key="cam_nutri")
-                    if foto_cam_nutri:
-                        fotos_nutri_lista.append(foto_cam_nutri)
+                opcion = st.radio("Método:", ["📸 Cámara", "📁 Galería"], horizontal=True, key="nutri_radio")
+                fotos = []
+                if opcion == "📸 Cámara":
+                    f = st.camera_input("Foto de tu comida", key="cam_nutri")
+                    if f: fotos.append(f)
                 else:
-                    fotos_gal_nutri = st.file_uploader("Subí tus fotos (JPG/PNG)", type=["jpg", "jpeg", "png"], key="file_nutri", accept_multiple_files=True)
-                    if fotos_gal_nutri:
-                        fotos_nutri_lista.extend(fotos_gal_nutri)
-                if fotos_nutri_lista:
-                    imagenes_pil = []
-                    cols = st.columns(len(fotos_nutri_lista))
-                    for idx, f in enumerate(fotos_nutri_lista):
-                        img_pil = Image.open(f)
-                        imagenes_pil.append(img_pil)
-                        cols[idx].image(img_pil, use_container_width=True)
-                    if st.button("🔮 Analizar Plato(s)", type="primary", key="btn_nutri"):
-                        with st.spinner("Gemini analizando..."):
+                    f = st.file_uploader("Subí fotos", type=["jpg", "jpeg", "png"], key="file_nutri", accept_multiple_files=True)
+                    if f: fotos.extend(f)
+                if fotos:
+                    imgs = []
+                    cols = st.columns(len(fotos))
+                    for idx, fi in enumerate(fotos):
+                        img = Image.open(fi)
+                        imgs.append(img)
+                        cols[idx].image(img, use_container_width=True)
+                    if st.button("🔮 Analizar", type="primary", key="btn_nutri"):
+                        with st.spinner("Analizando..."):
                             try:
-                                prompt = "Sos un nutricionista profesional paraguayo. Mirá estas fotos e identificá la comida. Estimá las calorías totales conjuntas y los macros (Proteína, Carbohidratos, Grasas en gramos). Sé breve."
-                                contenido = [prompt] + imagenes_pil
-                                respuesta = model_gemini.generate_content(contenido)
-                                st.write("---")
-                                st.markdown("### ✍️ Análisis Nutricional")
-                                st.write(respuesta.text)
+                                prompt = "Sos un nutricionista paraguayo. Identificá la comida, estimá calorías totales y macros (Proteína, Carbs, Grasas en g). Sé breve."
+                                resp = model_gemini.generate_content([prompt] + imgs)
+                                st.markdown("### ✍️ Análisis")
+                                st.write(resp.text)
                             except Exception as e:
-                                st.error(f"Error al analizar con Gemini: {e}")
+                                st.error(f"Error: {e}")
             else:
-                st.error("⚠️ Configura GEMINI_API_KEY en los Secrets.")
+                st.error("⚠️ Configura GEMINI_API_KEY en Secrets.")
 
-        with t3:
-            st.subheader("💪 Análisis de Postura (Fotos Múltiples)")
+        elif tab == "Físico":
+            st.subheader("💪 Análisis de Postura")
             if model_gemini:
-                opcion_fisico = st.radio("Método de carga:", ["📸 Usar Cámara", "📁 Subir de Galería"], horizontal=True, key="radio_fisico")
-                fotos_fisico_lista = []
-                if opcion_fisico == "📸 Usar Cámara":
-                    foto_cam_fisico = st.camera_input("Mostrá tu físico 📸", key="cam_fisico")
-                    if foto_cam_fisico:
-                        fotos_fisico_lista.append(foto_cam_fisico)
+                opcion = st.radio("Método:", ["📸 Cámara", "📁 Galería"], horizontal=True, key="fisico_radio")
+                fotos = []
+                if opcion == "📸 Cámara":
+                    f = st.camera_input("Foto de tu físico", key="cam_fisico")
+                    if f: fotos.append(f)
                 else:
-                    fotos_gal_fisico = st.file_uploader("Subí tus fotos (Frente/Espalda)", type=["jpg", "jpeg", "png"], key="file_fisico", accept_multiple_files=True)
-                    if fotos_gal_fisico:
-                        fotos_fisico_lista.extend(fotos_gal_fisico)
-                if fotos_fisico_lista:
-                    imagenes_pil_f = []
-                    cols_f = st.columns(len(fotos_fisico_lista))
-                    for idx, f in enumerate(fotos_fisico_lista):
-                        img_pil = Image.open(f)
-                        imagenes_pil_f.append(img_pil)
-                        cols_f[idx].image(img_pil, use_container_width=True)
-                    if st.button("🔍 Evaluar Físico", type="primary", key="btn_fisico"):
-                        with st.spinner("El Coach IA está evaluando..."):
+                    f = st.file_uploader("Subí fotos", type=["jpg", "jpeg", "png"], key="file_fisico", accept_multiple_files=True)
+                    if f: fotos.extend(f)
+                if fotos:
+                    imgs = []
+                    cols = st.columns(len(fotos))
+                    for idx, fi in enumerate(fotos):
+                        img = Image.open(fi)
+                        imgs.append(img)
+                        cols[idx].image(img, use_container_width=True)
+                    if st.button("🔍 Evaluar", type="primary", key="btn_fisico"):
+                        with st.spinner("Evaluando..."):
                             try:
-                                prompt_fisico = "Sos un entrenador experto en biomecánica. Analizá estas fotos. Evaluá brevemente la simetría, postura, y definición general. Usá un tono motivador en español, directo y sin vueltas."
-                                contenido_f = [prompt_fisico] + imagenes_pil_f
-                                respuesta_fisico = model_gemini.generate_content(contenido_f)
-                                st.write("---")
-                                st.markdown("### 📋 Devolución de tu Coach")
-                                st.write(respuesta_fisico.text)
+                                prompt = "Sos un entrenador experto en biomecánica. Analizá estas fotos. Evaluá brevemente simetría, postura y definición. Tono motivador, directo."
+                                resp = model_gemini.generate_content([prompt] + imgs)
+                                st.markdown("### 📋 Devolución")
+                                st.write(resp.text)
                             except Exception as e:
-                                st.error(f"Error en el análisis de Gemini: {e}")
+                                st.error(f"Error: {e}")
             else:
-                st.error("⚠️ Configura GEMINI_API_KEY en los Secrets.")
+                st.error("⚠️ Configura GEMINI_API_KEY en Secrets.")
 
-        with t4:
+        elif tab == "Técnica":
             st.subheader(f"📹 Evaluar Técnica: {ejercicio_sel}")
-            st.info("Subí un video corto (máximo 15-20 segundos) para que la IA evalúe tu postura y rango de movimiento.")
+            st.info("Subí un video corto (15-20s) para evaluar postura y rango de movimiento.")
             if model_gemini:
-                video_file = st.file_uploader("Subí tu video de entrenamiento (MP4)", type=["mp4", "mov"], key="vid_tec")
-                if video_file is not None:
+                video_file = st.file_uploader("Subí tu video (MP4)", type=["mp4", "mov"], key="vid_tec")
+                if video_file:
                     st.video(video_file)
-                    if st.button("🚀 Analizar Técnica en Video", type="primary", use_container_width=True):
-                        with st.spinner("Subiendo video a la nube de Google..."):
+                    if st.button("🚀 Analizar Técnica", type="primary", use_container_width=True):
+                        with st.spinner("Procesando video..."):
                             try:
                                 temp_path = "temp_video.mp4"
                                 with open(temp_path, "wb") as f:
                                     f.write(video_file.getbuffer())
                                 video_gemini = genai.upload_file(path=temp_path)
-                                st.info("Video subido. Esperando que Google procese los fotogramas...")
                                 while video_gemini.state.name == "PROCESSING":
                                     time.sleep(3)
                                     video_gemini = genai.get_file(video_gemini.name)
                                 if video_gemini.state.name == "FAILED":
-                                    st.error("Error al procesar el video en los servidores de Google.")
+                                    st.error("Error al procesar el video.")
                                 else:
-                                    prompt_tec = f"Sos un entrenador de Powerlifting/Culturismo. Analizá mi técnica en el ejercicio: {ejercicio_sel}. Decime si el rango de movimiento es correcto, si ves fallos en la postura (ej: espalda encorvada, rodillas colapsadas) y cómo puedo mejorarlo. Sé conciso y directo."
-                                    respuesta_tec = model_gemini.generate_content([prompt_tec, video_gemini])
-                                    st.write("---")
+                                    prompt = f"Entrenador de Powerlifting/Culturismo. Analizá mi técnica en {ejercicio_sel}. Evaluá rango de movimiento, postura, y cómo mejorar. Conciso y directo."
+                                    resp = model_gemini.generate_content([prompt, video_gemini])
                                     st.markdown("### 🎯 Corrección Técnica")
-                                    st.write(respuesta_tec.text)
+                                    st.write(resp.text)
                                     genai.delete_file(video_gemini.name)
                                     os.remove(temp_path)
                             except Exception as e:
-                                st.error(f"Error al analizar el video: {e}")
+                                st.error(f"Error: {e}")
             else:
-                st.error("⚠️ Configura GEMINI_API_KEY en los Secrets.")
+                st.error("⚠️ Configura GEMINI_API_KEY en Secrets.")
 
-        with t5:
+        elif tab == "Agua":
             st.subheader("💧 Registro de Hidratación")
             if sheet:
                 tz = pytz.timezone(ZONA_HORARIA)
@@ -401,8 +420,7 @@ else:
             else:
                 st.info("Conectando con Google Sheets...")
 
-        with t6:
+        elif tab == "Rendimiento":
             st.subheader("Volumen por Sesión")
             df_plot = df_r.sort_values("Fecha_Sort").tail(10)
             st.line_chart(df_plot.set_index("Fecha")["Volumen"])
-
