@@ -54,7 +54,7 @@ def obtener_datos_hevy_auto():
     todos = []
     errores = []
     for p in range(1, 7):
-        res = requests.get(url, headers=headers, params={"page": p, "pageSize": 15})
+        res = requests.get(url, headers=headers, params={"page": p, "pageSize": 10})
         if res.status_code == 200:
             datos = res.json()
             if "workouts" in datos:
@@ -63,9 +63,11 @@ def obtener_datos_hevy_auto():
                 errores.append(f"Pág {p}: 200 pero sin 'workouts'. Keys: {list(datos.keys())}")
         else:
             errores.append(f"Pág {p}: HTTP {res.status_code} - {res.text[:200]}")
+    if todos:
+        return {"workouts": todos}
     if errores:
-        st.warning("⚠️ Errores API:\n" + "\n".join(errores))
-    return {"workouts": todos} if todos else None
+        return {"error": "\n".join(errores)}
+    return None
 
 def detectar_semana_actual(datos_json):
     if not datos_json or "workouts" not in datos_json or len(datos_json["workouts"]) == 0: return 1
@@ -170,6 +172,8 @@ else:
             datos_crudos = None
     if not datos_crudos:
         st.warning("⚠️ No se pudieron cargar los entrenamientos. Verificá tu conexión a internet.")
+    elif "error" in datos_crudos:
+        st.error(f"❌ Error de API:\n{datos_crudos['error']}")
     else:
         df_r, df_e = procesar_datos(datos_crudos)
         sem_auto = detectar_semana_actual(datos_crudos)
